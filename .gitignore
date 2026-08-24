@@ -1,0 +1,23 @@
+# Sensitive local data
+*.json
+backup/
+backups/
+
+# Private runtime/config files
+config.local.php
+config.production.php
+kata-config.php
+.env
+.env.*
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Temporary files
+*.log
+*.tmp
+*.bak
