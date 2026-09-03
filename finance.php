@@ -1877,6 +1877,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             gap: 16px;
             flex-wrap: wrap;
             align-items: center;
+            width: 100%;
         }
 
         a {
@@ -1916,15 +1917,13 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             color: var(--accent-dark);
         }
 
-        .money-menu-toggle {
-            display: none;
-        }
-
         .money-subnav {
             display: flex;
+            width: 100%;
+            justify-content: flex-end;
             flex-wrap: wrap;
             gap: 8px;
-            margin: -10px 0 24px;
+            margin: -6px 0 0;
         }
 
         .money-subnav a {
@@ -2891,34 +2890,19 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 width: 100%;
             }
 
-            .money-menu-toggle {
-                display: inline-flex;
-                width: auto;
-                min-height: 44px;
-                align-items: center;
-                justify-content: center;
-                gap: 8px;
-                margin: -10px 0 18px;
-                border: 1px solid var(--line);
-                border-radius: 8px;
-                padding: 0 5px;
-                background: var(--panel);
-                color: var(--accent-dark);
-                font-size: 1rem;
-                font-weight: 800;
-            }
-
             .money-subnav {
-                display: none;
-                padding: 4px;
-                margin-top: -8px;
-                border: 1px solid var(--line);
-                border-radius: 8px;
-                background: var(--panel);
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+                padding: 0;
+                margin: 0;
+                border: 0;
+                background: transparent;
             }
 
-            .money-subnav.is-open {
-                display: flex;
+            .money-subnav a {
+                border-radius: 6px;
             }
 
             .summary-grid,
@@ -3000,6 +2984,15 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 <a href="three-month-goals.php">3 Month Goals</a>
                 <a href="finance.php">Money Kata</a>
                 <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme">Night</button>
+                <div class="money-subnav" id="money-subnav" aria-label="Money Kata sections" data-money-subnav>
+                    <a class="<?= !$isCreditCardView && !$isIncomeView && !$isBillsView && $moneyPage === 'dashboard' ? 'is-selected' : '' ?>" href="finance.php">Dashboard</a>
+                    <a class="<?= $isDailyCheckInView ? 'is-selected' : '' ?>" href="finance.php?page=daily">Daily Check-In</a>
+                    <a class="<?= $isPaymentPlanView ? 'is-selected' : '' ?>" href="finance.php?page=payment">Payment Plan</a>
+                    <a class="<?= $isAccountsView ? 'is-selected' : '' ?>" href="finance.php?page=accounts">Accounts</a>
+                    <a class="<?= $isBillsView ? 'is-selected' : '' ?>" href="finance.php?bills=1">Bills</a>
+                    <a class="<?= $isIncomeView ? 'is-selected' : '' ?>" href="finance.php?income=1">Income</a>
+                    <a class="<?= $isCreditCardView ? 'is-selected' : '' ?>" href="finance.php?cards=1">Credit Cards</a>
+                </div>
             </div>
         </nav>
 
@@ -3007,20 +3000,6 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             <h1><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
             <p class="subtitle"><?= htmlspecialchars($pageSubtitle, ENT_QUOTES, 'UTF-8') ?></p>
         </header>
-
-        <button class="money-menu-toggle" type="button" aria-expanded="false" aria-controls="money-subnav" data-money-menu-toggle>
-            <span aria-hidden="true">☰</span>
-            <span data-money-menu-label>Menu</span>
-        </button>
-        <div class="money-subnav" id="money-subnav" aria-label="Money Kata sections" data-money-subnav>
-            <a class="<?= !$isCreditCardView && !$isIncomeView && !$isBillsView && $moneyPage === 'dashboard' ? 'is-selected' : '' ?>" href="finance.php">Dashboard</a>
-            <a class="<?= $isDailyCheckInView ? 'is-selected' : '' ?>" href="finance.php?page=daily">Daily Check-In</a>
-            <a class="<?= $isPaymentPlanView ? 'is-selected' : '' ?>" href="finance.php?page=payment">Payment Plan</a>
-            <a class="<?= $isAccountsView ? 'is-selected' : '' ?>" href="finance.php?page=accounts">Accounts</a>
-            <a class="<?= $isBillsView ? 'is-selected' : '' ?>" href="finance.php?bills=1">Bills</a>
-            <a class="<?= $isIncomeView ? 'is-selected' : '' ?>" href="finance.php?income=1">Income</a>
-            <a class="<?= $isCreditCardView ? 'is-selected' : '' ?>" href="finance.php?cards=1">Credit Cards</a>
-        </div>
 
         <?php if ($isCreditCardView): ?>
             <p class="detail-nav"><a href="finance.php">Back to Money Kata</a></p>
@@ -4164,20 +4143,6 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             cadenceSelect.addEventListener('change', syncBillScheduleFields);
             syncBillScheduleFields();
         });
-
-        const moneyMenuToggle = document.querySelector('[data-money-menu-toggle]');
-        const moneySubnav = document.querySelector('[data-money-subnav]');
-        const moneyMenuLabel = document.querySelector('[data-money-menu-label]');
-
-        if (moneyMenuToggle && moneySubnav) {
-            moneyMenuToggle.addEventListener('click', () => {
-                const isOpen = moneySubnav.classList.toggle('is-open');
-                moneyMenuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-                if (moneyMenuLabel) {
-                    moneyMenuLabel.textContent = isOpen ? 'Close' : 'Menu';
-                }
-            });
-        }
 
         const appShell = document.querySelector('[data-app-shell]');
         const lockScreen = document.querySelector('[data-lock-screen]');
