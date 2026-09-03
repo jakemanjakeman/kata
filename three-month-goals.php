@@ -300,12 +300,23 @@ foreach ($data['goals'] as $goal) {
             padding: 42px 0 56px;
         }
 
-        nav {
+        .primary-nav {
+            display: flex;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 22px;
+        }
+
+        .primary-menu-toggle {
+            display: none;
+        }
+
+        .primary-menu-items {
             display: flex;
             justify-content: flex-end;
             gap: 16px;
             flex-wrap: wrap;
-            margin-bottom: 22px;
+            align-items: center;
         }
 
         a {
@@ -625,8 +636,62 @@ foreach ($data['goals'] as $goal) {
 
         @media (max-width: 620px) {
             main {
-                width: min(100% - 24px, 920px);
-                padding-top: 28px;
+                width: min(100% - 8px, 920px);
+                padding-top: 10px;
+                padding-bottom: 19px;
+            }
+
+            .primary-nav {
+                justify-content: flex-start;
+            }
+
+            .primary-menu-toggle {
+                display: inline-flex;
+                width: auto;
+                min-height: 44px;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                padding: 0 5px;
+                background: var(--panel);
+                color: var(--accent-dark);
+                font-size: 1rem;
+                font-weight: 800;
+            }
+
+            .primary-menu-items {
+                display: none;
+                width: 100%;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+                padding: 4px;
+                margin-top: 10px;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                background: var(--panel);
+            }
+
+            .primary-menu-items.is-open {
+                display: flex;
+            }
+
+            .primary-menu-items a,
+            .primary-menu-items .theme-toggle {
+                display: flex;
+                min-height: 40px;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                padding: 0 4px;
+                background: transparent;
+            }
+
+            .primary-menu-items .theme-toggle {
+                width: 100%;
             }
 
             .entry {
@@ -644,21 +709,49 @@ foreach ($data['goals'] as $goal) {
 
             button {
                 width: 100%;
+                padding-right: 6px;
+                padding-left: 6px;
             }
 
             button.theme-toggle {
                 width: auto;
+            }
+
+            .primary-menu-items button.theme-toggle {
+                width: 100%;
+            }
+
+            input[type="text"],
+            input[type="password"],
+            input[type="date"] {
+                padding-right: 5px;
+                padding-left: 5px;
+            }
+
+            .panel,
+            .goal-zone,
+            .goal,
+            .empty,
+            .lock-screen,
+            .lock-card {
+                padding: 6px;
             }
         }
     </style>
 </head>
 <body class="<?= $isNightMode ? 'night-mode' : '' ?>">
     <main class="app-shell<?= $isAuthenticated ? '' : ' is-blurred' ?>" data-app-shell>
-        <nav aria-label="Primary">
-            <a href="index.php">Daily Kata</a>
-            <a href="finance.php">Money Kata</a>
-            <a href="social.php">Social Kata</a>
-            <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme">Night</button>
+        <nav class="primary-nav" aria-label="Primary">
+            <button class="primary-menu-toggle" type="button" aria-expanded="false" aria-controls="primary-menu" data-primary-menu-toggle>
+                <span aria-hidden="true">&#9776;</span>
+                <span data-primary-menu-label>Menu</span>
+            </button>
+            <div class="primary-menu-items" id="primary-menu" data-primary-menu>
+                <a href="index.php">Daily Kata</a>
+                <a href="finance.php">Money Kata</a>
+                <a href="social.php">Social Kata</a>
+                <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme">Night</button>
+            </div>
         </nav>
 
         <header class="masthead">
@@ -786,6 +879,20 @@ foreach ($data['goals'] as $goal) {
             setThemeMode(nextMode);
             window.localStorage.setItem(themeOverrideKey, JSON.stringify({ date: themeToday, mode: nextMode }));
         });
+
+        const primaryMenuToggle = document.querySelector('[data-primary-menu-toggle]');
+        const primaryMenu = document.querySelector('[data-primary-menu]');
+        const primaryMenuLabel = document.querySelector('[data-primary-menu-label]');
+
+        if (primaryMenuToggle && primaryMenu) {
+            primaryMenuToggle.addEventListener('click', () => {
+                const isOpen = primaryMenu.classList.toggle('is-open');
+                primaryMenuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                if (primaryMenuLabel) {
+                    primaryMenuLabel.textContent = isOpen ? 'Close' : 'Menu';
+                }
+            });
+        }
 
         const appShell = document.querySelector('[data-app-shell]');
         const lockScreen = document.querySelector('[data-lock-screen]');
