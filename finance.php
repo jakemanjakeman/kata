@@ -1905,6 +1905,10 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             color: var(--accent-dark);
         }
 
+        .money-menu-toggle {
+            display: none;
+        }
+
         .money-subnav {
             display: flex;
             flex-wrap: wrap;
@@ -2826,6 +2830,36 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 justify-content: flex-start;
             }
 
+            .money-menu-toggle {
+                display: inline-flex;
+                width: auto;
+                min-height: 44px;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                margin: -10px 0 18px;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                padding: 0 16px;
+                background: var(--panel);
+                color: var(--accent-dark);
+                font-size: 1rem;
+                font-weight: 800;
+            }
+
+            .money-subnav {
+                display: none;
+                padding: 12px;
+                margin-top: -8px;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                background: var(--panel);
+            }
+
+            .money-subnav.is-open {
+                display: flex;
+            }
+
             .summary-grid,
             .entry,
             .chart-controls,
@@ -2879,7 +2913,11 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             <p class="subtitle"><?= htmlspecialchars($pageSubtitle, ENT_QUOTES, 'UTF-8') ?></p>
         </header>
 
-        <div class="money-subnav" aria-label="Money Kata sections">
+        <button class="money-menu-toggle" type="button" aria-expanded="false" aria-controls="money-subnav" data-money-menu-toggle>
+            <span aria-hidden="true">☰</span>
+            <span data-money-menu-label>Menu</span>
+        </button>
+        <div class="money-subnav" id="money-subnav" aria-label="Money Kata sections" data-money-subnav>
             <a class="<?= !$isCreditCardView && !$isIncomeView && !$isBillsView && $moneyPage === 'dashboard' ? 'is-selected' : '' ?>" href="finance.php">Dashboard</a>
             <a class="<?= $isDailyCheckInView ? 'is-selected' : '' ?>" href="finance.php?page=daily">Daily Check-In</a>
             <a class="<?= $isPaymentPlanView ? 'is-selected' : '' ?>" href="finance.php?page=payment">Payment Plan</a>
@@ -4017,6 +4055,20 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             cadenceSelect.addEventListener('change', syncBillScheduleFields);
             syncBillScheduleFields();
         });
+
+        const moneyMenuToggle = document.querySelector('[data-money-menu-toggle]');
+        const moneySubnav = document.querySelector('[data-money-subnav]');
+        const moneyMenuLabel = document.querySelector('[data-money-menu-label]');
+
+        if (moneyMenuToggle && moneySubnav) {
+            moneyMenuToggle.addEventListener('click', () => {
+                const isOpen = moneySubnav.classList.toggle('is-open');
+                moneyMenuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                if (moneyMenuLabel) {
+                    moneyMenuLabel.textContent = isOpen ? 'Close' : 'Menu';
+                }
+            });
+        }
 
         const appShell = document.querySelector('[data-app-shell]');
         const lockScreen = document.querySelector('[data-lock-screen]');
