@@ -1603,7 +1603,7 @@ $liquidityForecastMax = max(array_merge([1.0], array_map(function (array $point)
 $liquidityForecastPaymentMax = max(array_merge([0.0], array_map(function (array $point): float {
     return (float)$point['payments'];
 }, $liquidityForecast)));
-$liquidityForecastWidth = 1320;
+$liquidityForecastWidth = 1920;
 $liquidityForecastHeight = 500;
 $liquidityForecastPaddingLeft = 72;
 $liquidityForecastPaddingRight = 18;
@@ -2842,15 +2842,20 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             }
 
             .liquidity-hero .chart-frame {
-                overflow-x: auto;
+                display: block;
+                max-width: 100%;
+                overflow-x: scroll;
                 overflow-y: hidden;
                 -webkit-overflow-scrolling: touch;
                 overscroll-behavior-inline: contain;
+                touch-action: pan-x pan-y;
             }
 
-            .liquidity-hero .bar-chart {
-                width: 1320px;
-                max-width: none;
+            .liquidity-hero .chart-frame .bar-chart {
+                width: 1920px !important;
+                min-width: 1920px;
+                max-width: none !important;
+                flex: 0 0 1920px;
             }
 
             button.theme-toggle {
