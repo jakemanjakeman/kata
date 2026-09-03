@@ -2841,6 +2841,18 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 width: 100%;
             }
 
+            .liquidity-hero .chart-frame {
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                overscroll-behavior-inline: contain;
+            }
+
+            .liquidity-hero .bar-chart {
+                width: 1320px;
+                max-width: none;
+            }
+
             button.theme-toggle {
                 width: auto;
             }
