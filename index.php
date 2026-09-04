@@ -9,7 +9,6 @@ $authError = '';
 $isAuthenticated = (bool)($_SESSION['kata_authenticated'] ?? false);
 $now = new DateTimeImmutable();
 $todayKey = $now->format('Y-m-d');
-$showEveningReflection = (int)$now->format('G') >= 18;
 $isNightMode = (int)$now->format('G') > 20 || ((int)$now->format('G') === 20 && (int)$now->format('i') >= 30);
 $isWeekday = (int)$now->format('N') <= 5;
 $error = '';
@@ -38,6 +37,7 @@ function blankDay(): array
             'note' => '',
             'created_at' => '',
             'updated_at' => '',
+            'check_ins' => [],
         ],
         'goals_complete' => false,
         'goals' => [],
@@ -62,6 +62,30 @@ function normalizeDay(array $day): array
     $normalized['reflection']['note'] = (string)$normalized['reflection']['note'];
     $normalized['reflection']['created_at'] = (string)$normalized['reflection']['created_at'];
     $normalized['reflection']['updated_at'] = (string)$normalized['reflection']['updated_at'];
+    $normalized['reflection']['check_ins'] = [];
+    foreach ((array)($day['reflection']['check_ins'] ?? []) as $checkIn) {
+        $checkIn = (array)$checkIn;
+        $rating = normalizeRating($checkIn['happiness'] ?? 0);
+        if ($rating <= 0) {
+            continue;
+        }
+        $normalized['reflection']['check_ins'][] = [
+            'id' => (string)($checkIn['id'] ?? ''),
+            'happiness' => $rating,
+            'note' => trim((string)($checkIn['note'] ?? '')),
+            'created_at' => (string)($checkIn['created_at'] ?? ''),
+        ];
+    }
+    if ($normalized['reflection']['check_ins'] === [] && $normalized['reflection']['happiness'] > 0) {
+        $normalized['reflection']['check_ins'][] = [
+            'id' => 'legacy',
+            'happiness' => $normalized['reflection']['happiness'],
+            'note' => $normalized['reflection']['note'],
+            'created_at' => $normalized['reflection']['updated_at'] !== ''
+                ? $normalized['reflection']['updated_at']
+                : $normalized['reflection']['created_at'],
+        ];
+    }
     $normalized['goals_complete'] = (bool)($day['goals_complete'] ?? false);
     $normalized['goals'] = array_values((array)($day['goals'] ?? []));
 
@@ -429,23 +453,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
         $error = 'Could not save the focus. Check that this folder is writable.';
     }
 
-    if ($action === 'save_reflection') {
+    if ($action === 'save_check_in') {
         $happiness = normalizeRating($_POST['happiness'] ?? 0, 0.5);
-        $tiktokFollowers = parseFollowerCount((string)($_POST['tiktok_followers'] ?? ''));
         $note = trim((string)($_POST['reflection_note'] ?? ''));
         $alreadyCreated = (string)($today['reflection']['created_at'] ?? '');
+        $createdAt = (new DateTimeImmutable())->format(DateTimeInterface::ATOM);
 
+        $today['reflection']['check_ins'][] = [
+            'id' => bin2hex(random_bytes(8)),
+            'happiness' => $happiness,
+            'note' => $note,
+            'created_at' => $createdAt,
+        ];
         $today['reflection']['happiness'] = $happiness;
-        $today['reflection']['tiktok_followers'] = $tiktokFollowers;
         $today['reflection']['note'] = $note;
-        $today['reflection']['created_at'] = $alreadyCreated !== '' ? $alreadyCreated : (new DateTimeImmutable())->format(DateTimeInterface::ATOM);
-        $today['reflection']['updated_at'] = (new DateTimeImmutable())->format(DateTimeInterface::ATOM);
+        $today['reflection']['created_at'] = $alreadyCreated !== '' ? $alreadyCreated : $createdAt;
+        $today['reflection']['updated_at'] = $createdAt;
 
         if (saveData($storageFile, $data)) {
             redirectHome();
         }
 
-        $error = 'Could not save the evening reflection. Check that this folder is writable.';
+        $error = 'Could not save the check-in. Check that this folder is writable.';
     }
 
     if ($action === 'save_calendar_reflection') {
@@ -751,7 +780,8 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
             color: var(--accent-dark);
         }
 
-        h1 {
+        h1,
+        .page-title {
             margin: 0;
             font-size: clamp(2rem, 5vw, 4rem);
             line-height: 0.98;
@@ -841,20 +871,21 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
         }
 
         .reflection {
+            position: relative;
             margin-bottom: 24px;
-            padding: 18px;
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            box-shadow: 0 12px 28px var(--shadow);
+            padding: clamp(20px, 4vw, 34px);
+            background: linear-gradient(145deg, var(--warm-panel), var(--panel));
+            border: 2px solid var(--warm-line);
+            border-radius: 14px;
+            box-shadow: 0 16px 36px var(--shadow);
         }
 
         .reflection-grid {
             display: grid;
-            grid-template-columns: auto minmax(150px, 0.45fr) 1fr auto;
-            gap: 12px;
-            align-items: center;
-            margin-top: 14px;
+            grid-template-columns: auto 1fr auto;
+            gap: 16px;
+            align-items: end;
+            margin-top: 18px;
         }
 
         .stars {
@@ -882,7 +913,7 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
             overflow: hidden;
             color: var(--star-muted);
             cursor: pointer;
-            font-size: 1.9rem;
+            font-size: 2.8rem;
             line-height: 1;
         }
 
@@ -904,6 +935,35 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
 
         .reflection-note {
             min-width: 0;
+        }
+
+        .reflection-prompt {
+            margin: 6px 0 0;
+            color: var(--muted);
+            font-size: 1rem;
+        }
+
+        .check-in-history {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 16px;
+            margin-top: 18px;
+            padding-top: 14px;
+            border-top: 1px solid var(--warm-line);
+        }
+
+        .check-in-history-item {
+            display: flex;
+            gap: 7px;
+            align-items: center;
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        .check-in-history-stars {
+            color: var(--star);
+            font-size: 1rem;
+            line-height: 1;
         }
 
         .reflection-followers {
@@ -1010,6 +1070,15 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.06em;
+        }
+
+        .check-in-title {
+            margin: 0;
+            font-size: clamp(1.65rem, 4vw, 2.5rem);
+            line-height: 1.1;
+            color: var(--ink);
+            letter-spacing: -0.02em;
+            text-transform: none;
         }
 
         .entry {
@@ -1708,7 +1777,20 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
             }
 
             .stars label {
-                font-size: 3.8rem;
+                font-size: clamp(3.2rem, 17vw, 4.4rem);
+            }
+
+            .reflection {
+                padding: 16px 10px;
+            }
+
+            .reflection .check-in-title,
+            .reflection-prompt {
+                text-align: center;
+            }
+
+            .reflection .stars {
+                justify-self: center;
             }
 
             .reflection-stars {
@@ -1786,8 +1868,47 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
             </div>
         </nav>
 
+        <?php $todayView = $data['days'][$todayKey]; ?>
+        <?php
+            $reflection = $todayView['reflection'];
+            $checkIns = array_reverse((array)($reflection['check_ins'] ?? []));
+        ?>
+
+        <section class="reflection" aria-labelledby="reflection-stage">
+            <h1 class="check-in-title" id="reflection-stage">How are you feeling right now?</h1>
+            <p class="reflection-prompt">Take a quick pulse check. Come back and rate the day again whenever it changes.</p>
+            <form class="reflection-form" method="post" action="">
+                <input type="hidden" name="action" value="save_check_in">
+                <div class="reflection-grid">
+                    <fieldset class="stars" aria-label="Current happiness rating">
+                        <?php for ($step = 10; $step >= 1; $step--): ?>
+                            <?php $rating = $step / 2; ?>
+                            <input id="happiness-<?= $step ?>" name="happiness" type="radio" value="<?= htmlspecialchars(formatRating($rating), ENT_QUOTES, 'UTF-8') ?>" required>
+                            <label for="happiness-<?= $step ?>" data-half="<?= $step % 2 === 0 ? 'right' : 'left' ?>" title="<?= htmlspecialchars(formatRating($rating), ENT_QUOTES, 'UTF-8') ?> star<?= abs($rating - 1.0) < 0.01 ? '' : 's' ?>"><span>&#9733;</span></label>
+                        <?php endfor; ?>
+                    </fieldset>
+                    <div class="reflection-note">
+                        <label for="reflection-note">What is shaping this rating?</label>
+                        <input id="reflection-note" name="reflection_note" type="text" maxlength="220" placeholder="One line about how this moment feels.">
+                    </div>
+                    <button type="submit">Save Check-in</button>
+                </div>
+            </form>
+            <?php if ($checkIns !== []): ?>
+                <div class="check-in-history" aria-label="Today's recent check-ins">
+                    <?php foreach (array_slice($checkIns, 0, 4) as $checkIn): ?>
+                        <?php $checkInRating = normalizeRating($checkIn['happiness'] ?? 0); ?>
+                        <div class="check-in-history-item" title="<?= htmlspecialchars((string)($checkIn['note'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                            <span class="check-in-history-stars" aria-label="<?= htmlspecialchars(formatRating($checkInRating), ENT_QUOTES, 'UTF-8') ?> out of 5"><?= renderStarRating($checkInRating) ?></span>
+                            <span><?= htmlspecialchars(formatCompletedTime((string)($checkIn['created_at'] ?? '')), ENT_QUOTES, 'UTF-8') ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </section>
+
         <header class="masthead">
-            <h1>Daily Kata</h1>
+            <h2 class="page-title">Daily Kata</h2>
             <p class="subtitle">
                 <?= $isWeekday
                     ? 'Catch the thoughts as they arrive, then shape the evening from getting home through bedtime.'
@@ -1795,8 +1916,6 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
                 ?>
             </p>
         </header>
-
-        <?php $todayView = $data['days'][$todayKey]; ?>
 
         <section class="focus" aria-labelledby="focus-stage">
             <h2 class="stage-title" id="focus-stage">Main Focus</h2>
@@ -1814,55 +1933,6 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
                 </div>
             </form>
         </section>
-
-        <?php if ($showEveningReflection): ?>
-            <?php
-                $reflection = $todayView['reflection'];
-                $happiness = normalizeRating($reflection['happiness'] ?? 0);
-                $tiktokFollowers = $reflection['tiktok_followers'];
-                $hasReflection = $happiness > 0;
-            ?>
-            <section class="reflection" aria-labelledby="reflection-stage">
-                <h2 class="stage-title" id="reflection-stage">Evening Reflection</h2>
-                <?php if ($hasReflection): ?>
-                    <button class="reflection-edit-button" type="button" aria-label="Edit evening reflection" title="Edit evening reflection" data-reflection-edit>&#9998;</button>
-                    <div class="reflection-display">
-                        <div class="reflection-stars" aria-label="<?= htmlspecialchars(formatRating($happiness), ENT_QUOTES, 'UTF-8') ?> out of 5 stars"><?= renderStarRating($happiness) ?></div>
-                        <?php if ($tiktokFollowers !== null): ?>
-                            <div class="reflection-meta">
-                                <span class="stat-pill">TikTok followers: <?= number_format((int)$tiktokFollowers) ?></span>
-                            </div>
-                        <?php endif; ?>
-                        <?php if (trim((string)($reflection['note'] ?? '')) !== ''): ?>
-                            <p class="reflection-text"><?= htmlspecialchars((string)$reflection['note'], ENT_QUOTES, 'UTF-8') ?></p>
-                        <?php else: ?>
-                            <p class="reflection-text">Reflection saved.</p>
-                        <?php endif; ?>
-                    </div>
-                <?php endif; ?>
-                <form class="reflection-form<?= $hasReflection ? ' is-hidden' : '' ?>" method="post" action="" data-reflection-form>
-                    <input type="hidden" name="action" value="save_reflection">
-                    <div class="reflection-grid">
-                        <fieldset class="stars" aria-label="Happiness rating">
-                            <?php for ($step = 10; $step >= 1; $step--): ?>
-                                <?php $rating = $step / 2; ?>
-                                <input id="happiness-<?= $step ?>" name="happiness" type="radio" value="<?= htmlspecialchars(formatRating($rating), ENT_QUOTES, 'UTF-8') ?>" <?= abs($happiness - $rating) < 0.01 ? 'checked' : '' ?> required>
-                                <label for="happiness-<?= $step ?>" data-half="<?= $step % 2 === 0 ? 'right' : 'left' ?>" title="<?= htmlspecialchars(formatRating($rating), ENT_QUOTES, 'UTF-8') ?> star<?= abs($rating - 1.0) < 0.01 ? '' : 's' ?>"><span>&#9733;</span></label>
-                            <?php endfor; ?>
-                        </fieldset>
-                        <div class="reflection-followers">
-                            <label for="tiktok-followers">TikTok follower count</label>
-                            <input id="tiktok-followers" name="tiktok_followers" type="text" inputmode="numeric" pattern="[0-9,]*" maxlength="12" placeholder="TikTok followers" value="<?= $tiktokFollowers !== null ? htmlspecialchars(number_format((int)$tiktokFollowers), ENT_QUOTES, 'UTF-8') : '' ?>">
-                        </div>
-                        <div class="reflection-note">
-                            <label for="reflection-note">Why was or was not this a happy day?</label>
-                            <input id="reflection-note" name="reflection_note" type="text" maxlength="220" placeholder="One line on why today felt that way." value="<?= htmlspecialchars((string)($reflection['note'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
-                        </div>
-                        <button type="submit">Save Reflection</button>
-                    </div>
-                </form>
-            </section>
-        <?php endif; ?>
 
         <?php if (!$todayView['goals_complete']): ?>
             <section class="stage" aria-labelledby="goals-stage">
@@ -2278,9 +2348,6 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
         const focusEditButton = document.querySelector('[data-focus-edit]');
         const focusForm = document.querySelector('[data-focus-form]');
         const focusTextarea = document.querySelector('#focus');
-        const reflectionEditButton = document.querySelector('[data-reflection-edit]');
-        const reflectionForm = document.querySelector('[data-reflection-form]');
-        const reflectionNote = document.querySelector('#reflection-note');
         const calendarDialog = document.querySelector('[data-calendar-dialog]');
         const calendarDialogTitle = document.querySelector('#calendar-dialog-title');
         const calendarDialogDate = document.querySelector('[data-calendar-dialog-date]');
@@ -2295,14 +2362,6 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
                 focusForm.classList.remove('is-hidden');
                 focusEditButton.hidden = true;
                 focusTextarea.focus();
-            });
-        }
-
-        if (reflectionEditButton && reflectionForm) {
-            reflectionEditButton.addEventListener('click', () => {
-                reflectionForm.classList.remove('is-hidden');
-                reflectionEditButton.hidden = true;
-                reflectionNote?.focus();
             });
         }
 
