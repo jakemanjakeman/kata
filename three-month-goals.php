@@ -97,6 +97,11 @@ if ($isAuthenticated) {
     ensureDailyJsonBackups($todayKey);
 }
 
+$focusError = $isAuthenticated ? kataHandleMainFocusSave() : '';
+if ($focusError !== '') {
+    $error = $focusError;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
     $action = (string)($_POST['action'] ?? 'add_goal');
 
@@ -329,6 +334,8 @@ foreach ($data['goals'] as $goal) {
         a:focus-visible {
             text-decoration: underline;
         }
+
+        <?= kataGlobalFocusStyles() ?>
 
         .theme-toggle {
             width: auto;
@@ -741,6 +748,8 @@ foreach ($data['goals'] as $goal) {
 </head>
 <body class="<?= $isNightMode ? 'night-mode' : '' ?>">
     <main class="app-shell<?= $isAuthenticated ? '' : ' is-blurred' ?>" data-app-shell>
+        <?= kataRenderGlobalFocus(kataLoadMainFocus()) ?>
+
         <nav class="primary-nav" aria-label="Primary">
             <button class="primary-menu-toggle" type="button" aria-expanded="false" aria-controls="primary-menu" data-primary-menu-toggle>
                 <span aria-hidden="true">&#9776;</span>
@@ -879,6 +888,8 @@ foreach ($data['goals'] as $goal) {
             setThemeMode(nextMode);
             window.localStorage.setItem(themeOverrideKey, JSON.stringify({ date: themeToday, mode: nextMode }));
         });
+
+        <?= kataGlobalFocusScript() ?>
 
         const primaryMenuToggle = document.querySelector('[data-primary-menu-toggle]');
         const primaryMenu = document.querySelector('[data-primary-menu]');
