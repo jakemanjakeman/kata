@@ -90,22 +90,27 @@ function socialFollowerKeys(): array
 function loadData(string $storageFile): array
 {
     if (!is_file($storageFile)) {
-        return ['days' => []];
+        return ['main_focus' => '', 'days' => []];
     }
 
     $contents = file_get_contents($storageFile);
     if ($contents === false || trim($contents) === '') {
-        return ['days' => []];
+        return ['main_focus' => '', 'days' => []];
     }
 
     $decoded = json_decode($contents, true);
     if (!is_array($decoded)) {
-        return ['days' => []];
+        return ['main_focus' => '', 'days' => []];
     }
 
     if (isset($decoded['days']) && is_array($decoded['days'])) {
         foreach ($decoded['days'] as $date => $day) {
             $decoded['days'][$date] = normalizeDay((array)$day);
+        }
+
+        $decoded['main_focus'] = trim((string)($decoded['main_focus'] ?? ''));
+        if ($decoded['main_focus'] === '') {
+            $decoded['main_focus'] = latestSavedFocus($decoded['days']);
         }
 
         return $decoded;
@@ -122,7 +127,21 @@ function loadData(string $storageFile): array
         $days[$date] = $day;
     }
 
-    return ['days' => $days];
+    return ['main_focus' => latestSavedFocus($days), 'days' => $days];
+}
+
+function latestSavedFocus(array $days): string
+{
+    krsort($days);
+
+    foreach ($days as $day) {
+        $focus = trim((string)(((array)$day)['focus'] ?? ''));
+        if ($focus !== '') {
+            return $focus;
+        }
+    }
+
+    return '';
 }
 
 function saveData(string $storageFile, array $data): bool
@@ -392,6 +411,7 @@ function collectMonthlyFinanceStats(array $entries, DateTimeImmutable $monthStar
 
 $data = loadData($storageFile);
 $financeData = loadFinanceCalendarData($financeStorageFile);
+$data['main_focus'] = trim((string)($data['main_focus'] ?? ''));
 $data['days'][$todayKey] = normalizeDay((array)($data['days'][$todayKey] ?? []));
 $today = &$data['days'][$todayKey];
 
@@ -420,7 +440,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
     }
 
     if ($action === 'save_focus') {
-        $today['focus'] = trim((string)($_POST['focus'] ?? ''));
+        $data['main_focus'] = trim((string)($_POST['focus'] ?? ''));
+        $today['focus'] = $data['main_focus'];
 
         if (saveData($storageFile, $data)) {
             redirectHome();
@@ -1797,18 +1818,19 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
         </header>
 
         <?php $todayView = $data['days'][$todayKey]; ?>
+        <?php $mainFocus = (string)($data['main_focus'] ?? ''); ?>
 
         <section class="focus" aria-labelledby="focus-stage">
             <h2 class="stage-title" id="focus-stage">Main Focus</h2>
-            <?php $hasFocus = trim((string)$todayView['focus']) !== ''; ?>
+            <?php $hasFocus = trim($mainFocus) !== ''; ?>
             <?php if ($hasFocus): ?>
                 <button class="focus-edit-button" type="button" aria-label="Edit main focus" title="Edit main focus" data-focus-edit>&#9998;</button>
-                <p class="focus-display"><?= htmlspecialchars((string)$todayView['focus'], ENT_QUOTES, 'UTF-8') ?></p>
+                <p class="focus-display"><?= htmlspecialchars($mainFocus, ENT_QUOTES, 'UTF-8') ?></p>
             <?php endif; ?>
             <form class="focus-form<?= $hasFocus ? ' is-hidden' : '' ?>" method="post" action="" data-focus-form>
                 <input type="hidden" name="action" value="save_focus">
                 <label for="focus">Main focus quote or saying</label>
-                <textarea id="focus" name="focus" maxlength="800" placeholder="Write the quote or saying you want to carry today."><?= htmlspecialchars((string)$todayView['focus'], ENT_QUOTES, 'UTF-8') ?></textarea>
+                <textarea id="focus" name="focus" maxlength="800" placeholder="Write the quote or saying you want to carry today."><?= htmlspecialchars($mainFocus, ENT_QUOTES, 'UTF-8') ?></textarea>
                 <div class="focus-actions">
                     <button type="submit">Save Focus</button>
                 </div>
