@@ -1077,6 +1077,11 @@ if ($isAuthenticated) {
     ensureDailyJsonBackups($todayKey);
 }
 
+$focusError = $isAuthenticated ? kataHandleMainFocusSave() : '';
+if ($focusError !== '') {
+    $error = $focusError;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
     $action = (string)($_POST['action'] ?? '');
 
@@ -1890,6 +1895,8 @@ foreach ($creditCardAccounts as $creditCardAccount) {
         a:focus-visible {
             text-decoration: underline;
         }
+
+        <?= kataGlobalFocusStyles() ?>
 
         .sr-only {
             position: absolute;
@@ -2973,6 +2980,8 @@ foreach ($creditCardAccounts as $creditCardAccount) {
 </head>
 <body class="<?= $isNightMode ? 'night-mode' : '' ?>">
     <main class="app-shell<?= $isMoneyDashboardView ? ' is-dashboard' : '' ?><?= $isAuthenticated ? '' : ' is-blurred' ?>" data-app-shell>
+        <?= kataRenderGlobalFocus(kataLoadMainFocus()) ?>
+
         <nav class="primary-nav" aria-label="Primary">
             <button class="primary-menu-toggle" type="button" aria-expanded="false" aria-controls="primary-menu" data-primary-menu-toggle>
                 <span aria-hidden="true">&#9776;</span>
@@ -4109,6 +4118,8 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             setThemeMode(nextMode);
             window.localStorage.setItem(themeOverrideKey, JSON.stringify({ date: themeToday, mode: nextMode }));
         });
+
+        <?= kataGlobalFocusScript() ?>
 
         const primaryMenuToggle = document.querySelector('[data-primary-menu-toggle]');
         const primaryMenu = document.querySelector('[data-primary-menu]');

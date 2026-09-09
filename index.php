@@ -424,6 +424,11 @@ if ($isAuthenticated) {
     ensureDailyJsonBackups($todayKey);
 }
 
+$focusError = $isAuthenticated ? kataHandleMainFocusSave() : '';
+if ($focusError !== '') {
+    $error = $focusError;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
     $action = (string)($_POST['action'] ?? 'add_goal');
 
@@ -441,16 +446,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
 
             $error = 'Could not save the goal. Check that this folder is writable.';
         }
-    }
-
-    if ($action === 'save_focus') {
-        $today['focus'] = trim((string)($_POST['focus'] ?? ''));
-
-        if (saveData($storageFile, $data)) {
-            redirectHome();
-        }
-
-        $error = 'Could not save the focus. Check that this folder is writable.';
     }
 
     if ($action === 'save_check_in') {
@@ -762,6 +757,16 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
             text-decoration: underline;
         }
 
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+        }
+
+        <?= kataGlobalFocusStyles() ?>
+
         .theme-toggle {
             width: auto;
             min-height: 0;
@@ -804,70 +809,6 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
             border: 1px solid var(--line);
             border-radius: 8px;
             box-shadow: 0 12px 28px var(--shadow);
-        }
-
-        .focus {
-            position: relative;
-            margin-bottom: 24px;
-            padding: 18px;
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            box-shadow: 0 12px 28px var(--shadow);
-        }
-
-        .focus-display {
-            margin: 8px 44px 4px 0;
-            font: italic 2rem/1.25 Georgia, "Times New Roman", serif;
-            overflow-wrap: anywhere;
-        }
-
-        .focus-edit-button {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            display: inline-grid;
-            place-items: center;
-            width: 34px;
-            min-height: 34px;
-            padding: 0;
-            border: 1px solid var(--line);
-            background: transparent;
-            color: var(--muted);
-            font-size: 1rem;
-        }
-
-        .focus-edit-button:hover,
-        .focus-edit-button:focus-visible {
-            background: var(--hover);
-            color: var(--accent-dark);
-        }
-
-        .focus-form.is-hidden {
-            display: none;
-        }
-
-        .focus textarea {
-            width: 100%;
-            min-height: 96px;
-            resize: vertical;
-            border: 1px solid var(--line);
-            border-radius: 6px;
-            padding: 14px;
-            color: var(--ink);
-            font: italic 1.55rem/1.35 Georgia, "Times New Roman", serif;
-            outline: none;
-        }
-
-        .focus textarea:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--focus-ring);
-        }
-
-        .focus-actions {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 12px;
         }
 
         .reflection {
@@ -1751,7 +1692,6 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
 
             .panel,
             .summary-panel,
-            .focus,
             .reflection,
             .stage,
             .period,
@@ -1762,14 +1702,6 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
             .lock-screen,
             .lock-card {
                 padding: 6px;
-            }
-
-            .focus textarea {
-                font-size: 1.25rem;
-            }
-
-            .focus-display {
-                font-size: 1.45rem;
             }
 
             .reflection-grid {
@@ -1855,6 +1787,8 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
 </head>
 <body class="<?= $isNightMode ? 'night-mode' : '' ?>">
     <main class="app-shell<?= $isAuthenticated ? '' : ' is-blurred' ?>" data-app-shell>
+        <?= kataRenderGlobalFocus(kataLoadMainFocus()) ?>
+
         <nav class="primary-nav" aria-label="Primary">
             <button class="primary-menu-toggle" type="button" aria-expanded="false" aria-controls="primary-menu" data-primary-menu-toggle>
                 <span aria-hidden="true">&#9776;</span>
@@ -1874,8 +1808,18 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
             $checkIns = array_reverse((array)($reflection['check_ins'] ?? []));
         ?>
 
+        <header class="masthead">
+            <h1 class="page-title">Daily Kata</h1>
+            <p class="subtitle">
+                <?= $isWeekday
+                    ? 'Catch the thoughts as they arrive, then shape the evening from getting home through bedtime.'
+                    : 'Catch the thoughts as they arrive, then turn the day into a simple morning, midday, and afternoon plan.'
+                ?>
+            </p>
+        </header>
+
         <section class="reflection" aria-labelledby="reflection-stage">
-            <h1 class="check-in-title" id="reflection-stage">How are you feeling right now?</h1>
+            <h2 class="check-in-title" id="reflection-stage">How are you feeling right now?</h2>
             <p class="reflection-prompt">Take a quick pulse check. Come back and rate the day again whenever it changes.</p>
             <form class="reflection-form" method="post" action="">
                 <input type="hidden" name="action" value="save_check_in">
@@ -1905,33 +1849,6 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
-        </section>
-
-        <header class="masthead">
-            <h2 class="page-title">Daily Kata</h2>
-            <p class="subtitle">
-                <?= $isWeekday
-                    ? 'Catch the thoughts as they arrive, then shape the evening from getting home through bedtime.'
-                    : 'Catch the thoughts as they arrive, then turn the day into a simple morning, midday, and afternoon plan.'
-                ?>
-            </p>
-        </header>
-
-        <section class="focus" aria-labelledby="focus-stage">
-            <h2 class="stage-title" id="focus-stage">Main Focus</h2>
-            <?php $hasFocus = trim((string)$todayView['focus']) !== ''; ?>
-            <?php if ($hasFocus): ?>
-                <button class="focus-edit-button" type="button" aria-label="Edit main focus" title="Edit main focus" data-focus-edit>&#9998;</button>
-                <p class="focus-display"><?= htmlspecialchars((string)$todayView['focus'], ENT_QUOTES, 'UTF-8') ?></p>
-            <?php endif; ?>
-            <form class="focus-form<?= $hasFocus ? ' is-hidden' : '' ?>" method="post" action="" data-focus-form>
-                <input type="hidden" name="action" value="save_focus">
-                <label for="focus">Main focus quote or saying</label>
-                <textarea id="focus" name="focus" maxlength="800" placeholder="Write the quote or saying you want to carry today."><?= htmlspecialchars((string)$todayView['focus'], ENT_QUOTES, 'UTF-8') ?></textarea>
-                <div class="focus-actions">
-                    <button type="submit">Save Focus</button>
-                </div>
-            </form>
         </section>
 
         <?php if (!$todayView['goals_complete']): ?>
@@ -2297,6 +2214,8 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
             window.localStorage.setItem(themeOverrideKey, JSON.stringify({ date: themeToday, mode: nextMode }));
         });
 
+        <?= kataGlobalFocusScript() ?>
+
         const primaryMenuToggle = document.querySelector('[data-primary-menu-toggle]');
         const primaryMenu = document.querySelector('[data-primary-menu]');
         const primaryMenuLabel = document.querySelector('[data-primary-menu-label]');
@@ -2345,9 +2264,6 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
         const draggedClass = 'is-dragging';
         const todayKey = <?= json_encode($todayKey) ?>;
         let draggedTodo = null;
-        const focusEditButton = document.querySelector('[data-focus-edit]');
-        const focusForm = document.querySelector('[data-focus-form]');
-        const focusTextarea = document.querySelector('#focus');
         const calendarDialog = document.querySelector('[data-calendar-dialog]');
         const calendarDialogTitle = document.querySelector('#calendar-dialog-title');
         const calendarDialogDate = document.querySelector('[data-calendar-dialog-date]');
@@ -2356,14 +2272,6 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
         const calendarDialogClose = document.querySelector('[data-calendar-dialog-close]');
         const calendarDialogCancel = document.querySelector('[data-calendar-dialog-cancel]');
         const calendarRatingInputs = document.querySelectorAll('[data-calendar-rating]');
-
-        if (focusEditButton && focusForm && focusTextarea) {
-            focusEditButton.addEventListener('click', () => {
-                focusForm.classList.remove('is-hidden');
-                focusEditButton.hidden = true;
-                focusTextarea.focus();
-            });
-        }
 
         function openCalendarDialog(day) {
             if (!calendarDialog || !calendarDialogDate || !calendarDialogFollowers || !calendarDialogNote) {
