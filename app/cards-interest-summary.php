@@ -6,8 +6,8 @@ $interestMoney = static function (?float $amount): string {
 };
 ?>
 <section class="summary-panel" aria-labelledby="all-card-interest-title">
-    <h2 class="stage-title" id="all-card-interest-title">Projected interest — all cards</h2>
-    <p class="subtitle">Across all <?= (int)$allCardInterest['count'] ?> active credit cards, regardless of the chart selection below.</p>
+    <h2 class="stage-title" id="all-card-interest-title">Projected interest — <?= ucfirst($financeScope) ?> cards</h2>
+    <p class="subtitle">Across all <?= (int)$allCardInterest['count'] ?> active <?= $financeScope ?> credit cards, regardless of the chart selection below.</p>
     <div class="summary-grid">
         <div class="metric">
             <span>Interest per day<?= $allCardInterest['daily_count'] < $allCardInterest['count'] ? ' (partial)' : '' ?></span>

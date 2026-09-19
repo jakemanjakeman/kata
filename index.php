@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'bootstrap.php';
+require_once __DIR__ . '/app/finance-scope.php';
+$financeScope = ($_SESSION['finance_scope'] ?? '') === 'business' ? 'business' : 'personal';
 
 $storageFile = kataStoragePath('goals.json');
 $financeStorageFile = kataStoragePath('finance.json');
@@ -330,6 +332,7 @@ function normalizeFinanceAccountForCalendar(array $account): array
 
     return [
         'id' => (string)($account['id'] ?? ''),
+        'scope' => financeRecordScope($account),
         'name' => trim((string)($account['name'] ?? '')),
         'type' => in_array($type, ['bank', 'debt'], true) ? $type : 'bank',
     ];
@@ -434,7 +437,7 @@ function collectMonthlyFinanceStats(array $entries, DateTimeImmutable $monthStar
 }
 
 $data = loadData($storageFile);
-$financeData = loadFinanceCalendarData($financeStorageFile);
+$financeData = filterFinanceScope(loadFinanceCalendarData($financeStorageFile), $financeScope);
 $data['main_focus'] = trim((string)($data['main_focus'] ?? ''));
 $data['days'][$todayKey] = normalizeDay((array)($data['days'][$todayKey] ?? []));
 $today = &$data['days'][$todayKey];
@@ -1815,7 +1818,7 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
                 <span data-primary-menu-label>Menu</span>
             </button>
             <div class="primary-menu-items" id="primary-menu" data-primary-menu>
-                <a href="finance.php">Money Kata</a>
+                <a href="finance.php?finance_scope=<?= $financeScope ?>">Money Kata</a>
                 <a href="social.php">Social Kata</a>
                 <a href="three-month-goals.php">3 Month Goals</a>
                 <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme">Night</button>
@@ -2048,8 +2051,8 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
                                     <span class="calendar-metric">TikTok <?= number_format((int)$calendarFollowers) ?></span>
                                 <?php endif; ?>
                                 <?php if ($calendarFinanceTotals !== null): ?>
-                                    <a class="calendar-metric calendar-money" href="finance.php" aria-label="Money tally net <?= htmlspecialchars(formatCalendarMoney((float)$calendarFinanceTotals['net']), ENT_QUOTES, 'UTF-8') ?>">
-                                        Money <?= htmlspecialchars(formatCalendarMoney((float)$calendarFinanceTotals['net']), ENT_QUOTES, 'UTF-8') ?>
+                                    <a class="calendar-metric calendar-money" href="finance.php?finance_scope=<?= $financeScope ?>" aria-label="Money tally net <?= htmlspecialchars(formatCalendarMoney((float)$calendarFinanceTotals['net']), ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= ucfirst($financeScope) ?> money <?= htmlspecialchars(formatCalendarMoney((float)$calendarFinanceTotals['net']), ENT_QUOTES, 'UTF-8') ?>
                                     </a>
                                 <?php endif; ?>
                             </div>
@@ -2101,8 +2104,8 @@ $calendarFinanceStats = collectMonthlyFinanceStats($financeData['entries'], $cal
                                     <span class="calendar-metric">TikTok <?= number_format((int)$recentFollowers) ?></span>
                                 <?php endif; ?>
                                 <?php if ($recentFinanceTotals !== null): ?>
-                                    <a class="calendar-metric calendar-money" href="finance.php" aria-label="Money tally net <?= htmlspecialchars(formatCalendarMoney((float)$recentFinanceTotals['net']), ENT_QUOTES, 'UTF-8') ?>">
-                                        Money <?= htmlspecialchars(formatCalendarMoney((float)$recentFinanceTotals['net']), ENT_QUOTES, 'UTF-8') ?>
+                                    <a class="calendar-metric calendar-money" href="finance.php?finance_scope=<?= $financeScope ?>" aria-label="Money tally net <?= htmlspecialchars(formatCalendarMoney((float)$recentFinanceTotals['net']), ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= ucfirst($financeScope) ?> money <?= htmlspecialchars(formatCalendarMoney((float)$recentFinanceTotals['net']), ENT_QUOTES, 'UTF-8') ?>
                                     </a>
                                 <?php endif; ?>
                             </div>

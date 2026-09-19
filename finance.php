@@ -2,6 +2,10 @@
 declare(strict_types=1);
 
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'app' . DIRECTORY_SEPARATOR . 'bootstrap.php';
+require_once __DIR__ . '/app/finance-scope.php';
+$requestedScope = $_POST['finance_scope'] ?? $_GET['finance_scope'] ?? $_SESSION['finance_scope'] ?? 'personal';
+$financeScope = in_array($requestedScope, ['personal', 'business'], true) ? $requestedScope : 'personal';
+$_SESSION['finance_scope'] = $financeScope;
 
 $storageFile = kataStoragePath('finance.json');
 $authError = '';
@@ -81,6 +85,7 @@ function normalizeFinanceBill(array $bill): array
 
     return [
         'id' => (string)($bill['id'] ?? bin2hex(random_bytes(8))),
+        'scope' => financeRecordScope($bill),
         'name' => trim((string)($bill['name'] ?? '')),
         'cadence' => $cadence,
         'day' => $cadence === 'monthly' && $day >= 1 && $day <= 31 ? $day : 0,
@@ -101,6 +106,7 @@ function normalizeFinanceIncome(array $income): array
 
     return [
         'id' => (string)($income['id'] ?? bin2hex(random_bytes(8))),
+        'scope' => financeRecordScope($income),
         'name' => trim((string)($income['name'] ?? '')),
         'amount' => is_numeric($income['amount'] ?? null) ? round(abs((float)$income['amount']), 2) : 0.0,
         'cadence' => $cadence,
@@ -122,6 +128,7 @@ function normalizeFinanceAccount(array $account): array
 
     return [
         'id' => (string)($account['id'] ?? bin2hex(random_bytes(8))),
+        'scope' => financeRecordScope($account),
         'name' => trim((string)($account['name'] ?? '')),
         'issuer' => trim((string)($account['issuer'] ?? '')),
         'notes' => (string)($account['notes'] ?? ''),
@@ -238,19 +245,21 @@ function loadFinanceData(string $storageFile): array
 
 function saveFinanceData(string $storageFile, array $data): bool
 {
+    global $financeScope;
+    $data = mergeFinanceScope(loadFinanceData($storageFile), $data, $financeScope);
     $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     return $json !== false && file_put_contents($storageFile, $json, LOCK_EX) !== false;
 }
 
 function redirectSelf(): never
 {
-    header('Location: ' . strtok($_SERVER['REQUEST_URI'], '?'));
+    header('Location: ' . financeScopeUrl('finance.php?' . http_build_query(array_diff_key($_GET, ['finance_scope' => true]))));
     exit;
 }
 
 function redirectFinancePage(string $page): never
 {
-    header('Location: finance.php?' . http_build_query(['page' => $page]));
+    header('Location: finance.php?' . http_build_query(['page' => $page, 'finance_scope' => $GLOBALS['financeScope']]));
     exit;
 }
 
@@ -1050,6 +1059,7 @@ function buildCreditCardToggleUrl(array $selectedIds, string $toggleId, string $
 
     $query = [
         'cards' => '1',
+        'finance_scope' => $GLOBALS['financeScope'],
         'cc_range' => $range,
     ];
     if (count($nextIds) === count($selectedIds)) {
@@ -1071,12 +1081,13 @@ function buildBillSortUrl(string $sortKey, string $currentSort, string $currentD
 
     return 'finance.php?' . http_build_query([
         'bills' => '1',
+        'finance_scope' => $GLOBALS['financeScope'],
         'bill_sort' => $sortKey,
         'bill_dir' => $nextDirection,
     ]);
 }
 
-$data = loadFinanceData($storageFile);
+$data = filterFinanceScope(loadFinanceData($storageFile), $financeScope);
 
 [$isAuthenticated, $authError] = kataHandleUnlock($todayKey);
 if ($isAuthenticated) {
@@ -1090,6 +1101,55 @@ if ($focusError !== '') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
     $action = (string)($_POST['action'] ?? '');
+    // Reject IDs outside this view, including stale forms after a record moves.
+    $targetCollections = ['account_id' => 'accounts', 'bill_id' => 'bills', 'income_id' => 'incomes'];
+    if ($action === 'save_card_details') {
+        $targetCollections['card_detail_id'] = 'accounts';
+        $_POST['card_detail_id'] = $_GET['account'] ?? '';
+    }
+    foreach ($targetCollections as $field => $collection) {
+        $id = (string)($_POST[$field] ?? '');
+        if ($id !== '' && accountById($data[$collection], $id) === null) {
+            $error = 'This record is not in the current view. Refresh the page and try again.';
+            $action = '';
+        }
+    }
+    if ($action === 'move_finance_record') {
+        $collection = (string)($_POST['collection'] ?? '');
+        $recordId = (string)($_POST['record_id'] ?? '');
+        $targetScope = (string)($_POST['target_scope'] ?? '');
+        if (!in_array($collection, ['accounts', 'bills', 'incomes'], true)
+            || !in_array($targetScope, ['personal', 'business'], true)
+            || accountById($data[$collection] ?? [], $recordId) === null) {
+            $error = 'Choose a record in this view and a valid destination.';
+        } else {
+            foreach ($data[$collection] as &$record) {
+                if ($record['id'] === $recordId) {
+                    $record['scope'] = $targetScope;
+                    $record['updated_at'] = $now->format(DateTimeInterface::ATOM);
+                    // A bill moved alone needs a payment account in its new view.
+                    if ($collection === 'bills' && $targetScope !== $financeScope) {
+                        $record['credit_card_id'] = '';
+                    }
+                }
+            }
+            unset($record);
+            if ($collection === 'accounts') {
+                foreach ($data['bills'] as &$bill) {
+                    if (($bill['credit_card_id'] ?? '') === $recordId) {
+                        $bill['scope'] = $targetScope;
+                    }
+                }
+                unset($bill);
+            }
+            if (saveFinanceData($storageFile, $data)) {
+                $destination = $collection === 'accounts' ? 'page=accounts' : ($collection === 'bills' ? 'bills=1' : 'income=1');
+                header('Location: ' . financeScopeUrl('finance.php?' . $destination . '&moved=1'));
+                exit;
+            }
+            $error = 'Could not move the record. Check that this folder is writable.';
+        }
+    }
 
     if ($action === 'save_card_details') {
         $cardId = (string)($_GET['account'] ?? '');
@@ -1123,7 +1183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
             }
             unset($account);
             if (saveFinanceData($storageFile, $data)) {
-                header('Location: finance.php?' . http_build_query(['account' => $cardId, 'saved' => '1']));
+                header('Location: finance.php?' . http_build_query(['account' => $cardId, 'saved' => '1', 'finance_scope' => $financeScope]));
                 exit;
             }
             $error = 'Could not save card details. Check that this folder is writable.';
@@ -1300,7 +1360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
             ];
 
             if (saveFinanceData($storageFile, $data)) {
-                header('Location: finance.php?bills=1');
+                header('Location: ' . financeScopeUrl('finance.php?bills=1'));
                 exit;
             }
 
@@ -1350,7 +1410,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
             $data['bills'][$billIndex]['updated_at'] = (new DateTimeImmutable())->format(DateTimeInterface::ATOM);
 
             if (saveFinanceData($storageFile, $data)) {
-                header('Location: finance.php?bills=1');
+                header('Location: ' . financeScopeUrl('finance.php?bills=1'));
                 exit;
             }
 
@@ -1365,7 +1425,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
         }));
 
         if (saveFinanceData($storageFile, $data)) {
-            header('Location: finance.php?bills=1');
+            header('Location: ' . financeScopeUrl('finance.php?bills=1'));
             exit;
         }
 
@@ -1418,7 +1478,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
             }
 
             if (saveFinanceData($storageFile, $data)) {
-                header('Location: finance.php?income=1');
+                header('Location: ' . financeScopeUrl('finance.php?income=1'));
                 exit;
             }
 
@@ -1433,7 +1493,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
         }));
 
         if (saveFinanceData($storageFile, $data)) {
-            header('Location: finance.php?income=1');
+            header('Location: ' . financeScopeUrl('finance.php?income=1'));
             exit;
         }
 
@@ -3047,16 +3107,16 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 <a href="index.php">Daily Kata</a>
                 <a href="social.php">Social Kata</a>
                 <a href="three-month-goals.php">3 Month Goals</a>
-                <a href="finance.php">Money Kata</a>
+                <a href="finance.php?finance_scope=<?= $financeScope ?>">Money Kata</a>
                 <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme">Night</button>
                 <div class="money-subnav" id="money-subnav" aria-label="Money Kata sections" data-money-subnav>
-                    <a class="<?= !$isCreditCardView && !$isIncomeView && !$isBillsView && $moneyPage === 'dashboard' ? 'is-selected' : '' ?>" href="finance.php">Dashboard</a>
-                    <a class="<?= $isDailyCheckInView ? 'is-selected' : '' ?>" href="finance.php?page=daily">Daily Check-In</a>
-                    <a class="<?= $isPaymentPlanView ? 'is-selected' : '' ?>" href="finance.php?page=payment">Payment Plan</a>
-                    <a class="<?= $isAccountsView ? 'is-selected' : '' ?>" href="finance.php?page=accounts">Accounts</a>
-                    <a class="<?= $isBillsView ? 'is-selected' : '' ?>" href="finance.php?bills=1">Bills</a>
-                    <a class="<?= $isIncomeView ? 'is-selected' : '' ?>" href="finance.php?income=1">Income</a>
-                    <a class="<?= $isCreditCardView ? 'is-selected' : '' ?>" href="finance.php?cards=1">Credit Cards</a>
+                    <a class="<?= !$isCreditCardView && !$isIncomeView && !$isBillsView && $moneyPage === 'dashboard' ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>">Dashboard</a>
+                    <a class="<?= $isDailyCheckInView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=daily">Daily Check-In</a>
+                    <a class="<?= $isPaymentPlanView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=payment">Payment Plan</a>
+                    <a class="<?= $isAccountsView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=accounts">Accounts</a>
+                    <a class="<?= $isBillsView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;bills=1">Bills</a>
+                    <a class="<?= $isIncomeView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;income=1">Income</a>
+                    <a class="<?= $isCreditCardView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;cards=1">Credit Cards</a>
                 </div>
             </div>
         </nav>
@@ -3065,9 +3125,20 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             <h1><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></h1>
             <p class="subtitle"><?= htmlspecialchars($pageSubtitle, ENT_QUOTES, 'UTF-8') ?></p>
         </header>
+        <nav class="toggle-pills" aria-label="Finance view" style="margin-bottom: 24px">
+            <?php foreach (['personal' => 'Personal', 'business' => 'Business'] as $scopeValue => $scopeLabel): ?>
+                <?php
+                    $scopeQuery = array_intersect_key($_GET, array_flip(['page', 'cards', 'bills', 'income', 'cc_range', 'range']));
+                    if (isset($_GET['account'])) { $scopeQuery['cards'] = '1'; }
+                    $scopeQuery['finance_scope'] = $scopeValue;
+                ?>
+                <a class="pill-toggle<?= $financeScope === $scopeValue ? ' is-selected' : '' ?>" href="finance.php?<?= htmlspecialchars(http_build_query($scopeQuery), ENT_QUOTES, 'UTF-8') ?>" <?= $financeScope === $scopeValue ? 'aria-current="true"' : '' ?>><?= $scopeLabel ?></a>
+            <?php endforeach; ?>
+        </nav>
+        <?php if (($_GET['moved'] ?? '') === '1'): ?><p class="notice" role="status">Moved to the other view. Switch views to find it there.</p><?php endif; ?>
 
         <?php if ($isCreditCardView): ?>
-            <p class="detail-nav"><a href="finance.php">Back to Money Kata</a></p>
+            <p class="detail-nav"><a href="finance.php?finance_scope=<?= $financeScope ?>">Back to Money Kata</a></p>
 
             <?php if ($detailAccountId !== ''): ?>
                 <?php require __DIR__ . '/app/card-details.php'; ?>
@@ -3100,7 +3171,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 </div>
                 <div class="chart-caption">
                     <?php foreach ($creditCardAccounts as $card): ?>
-                        <a class="link-button" href="finance.php?account=<?= rawurlencode((string)$card['id']) ?>"><?= htmlspecialchars((string)$card['name'], ENT_QUOTES, 'UTF-8') ?> details</a>
+                        <a class="link-button" href="finance.php?finance_scope=<?= $financeScope ?>&amp;account=<?= rawurlencode((string)$card['id']) ?>"><?= htmlspecialchars((string)$card['name'], ENT_QUOTES, 'UTF-8') ?> details</a>
                     <?php endforeach; ?>
                 </div>
             </section>
@@ -3151,6 +3222,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             <section class="panel" aria-labelledby="account-balance-title">
                 <h2 class="stage-title" id="account-balance-title"><?= htmlspecialchars($creditCardRangeLabel, ENT_QUOTES, 'UTF-8') ?></h2>
                 <form class="chart-controls" method="get" action="">
+                    <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                     <input type="hidden" name="cards" value="1">
                     <?php if ($detailCard !== null): ?><input type="hidden" name="account" value="<?= htmlspecialchars($detailAccountId, ENT_QUOTES, 'UTF-8') ?>"><?php endif; ?>
                     <?php foreach ($selectedCreditCardIds as $selectedCreditCardId): ?>
@@ -3224,11 +3296,12 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             </section>
             <?php endif; ?>
         <?php elseif ($isIncomeView): ?>
-            <p class="detail-nav"><a href="finance.php">Back to Money Kata</a></p>
+            <p class="detail-nav"><a href="finance.php?finance_scope=<?= $financeScope ?>">Back to Money Kata</a></p>
 
             <section class="panel" aria-labelledby="add-income-title">
-                <h2 class="stage-title" id="add-income-title">Add Income</h2>
+                <h2 class="stage-title" id="add-income-title">Add <?= ucfirst($financeScope) ?> Income</h2>
                 <form class="entry" method="post" action="">
+                    <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                     <input type="hidden" name="action" value="save_income">
                     <div class="account-input">
                         <label for="income-name">Income name</label>
@@ -3275,6 +3348,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                             <?php $incomeId = (string)$income['id']; ?>
                             <div class="account-group">
                                 <form class="entry" method="post" action="">
+                                    <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                                     <input type="hidden" name="action" value="save_income">
                                     <input type="hidden" name="income_id" value="<?= htmlspecialchars($incomeId, ENT_QUOTES, 'UTF-8') ?>">
                                     <div class="account-input">
@@ -3307,7 +3381,9 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                                     </div>
                                     <button type="submit">Save</button>
                                 </form>
+                                <?= renderFinanceMoveForm('incomes', $incomeId, $financeScope) ?>
                                 <form method="post" action="" style="margin-top: 10px;">
+                                    <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                                     <input type="hidden" name="action" value="delete_income">
                                     <input type="hidden" name="income_id" value="<?= htmlspecialchars($incomeId, ENT_QUOTES, 'UTF-8') ?>">
                                     <button class="danger-button" type="submit">Remove</button>
@@ -3318,7 +3394,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 <?php endif; ?>
             </section>
         <?php elseif ($isBillsView): ?>
-            <p class="detail-nav"><a href="finance.php">Back to Money Kata</a></p>
+            <p class="detail-nav"><a href="finance.php?finance_scope=<?= $financeScope ?>">Back to Money Kata</a></p>
 
             <section class="summary-panel" aria-labelledby="bill-stats-title">
                 <h2 class="stage-title" id="bill-stats-title">Bill Stats</h2>
@@ -3349,7 +3425,9 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             <section class="panel" aria-labelledby="add-bill-title">
                 <h2 class="stage-title" id="add-bill-title">Add Bill</h2>
                 <form class="entry" method="post" action="">
+                    <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                     <input type="hidden" name="action" value="add_bill">
+                    <p class="subtitle">New bills belong to <?= ucfirst($financeScope) ?>. Moving a bill on its own clears its card assignment.</p>
                     <div class="account-input">
                         <label for="bill-name">Bill name</label>
                         <input id="bill-name" name="bill_name" type="text" maxlength="80" placeholder="Internet" required>
@@ -3442,6 +3520,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                                         <td class="amount-cell"><?= htmlspecialchars(formatMoney((float)$bill['amount']), ENT_QUOTES, 'UTF-8') ?><?= $billCadence === 'weekly' ? ' / week' : '' ?></td>
                                         <td colspan="2">
                                             <form class="bill-card-form" method="post" action="">
+                                                <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                                                 <input type="hidden" name="action" value="save_bill_card">
                                                 <input type="hidden" name="bill_id" value="<?= htmlspecialchars($billId, ENT_QUOTES, 'UTF-8') ?>">
                                                 <label for="bill-cadence-<?= htmlspecialchars($billId, ENT_QUOTES, 'UTF-8') ?>">Schedule</label>
@@ -3483,7 +3562,9 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                                             </form>
                                         </td>
                                         <td class="actions-cell">
+                                            <?= renderFinanceMoveForm('bills', $billId, $financeScope) ?>
                                             <form method="post" action="">
+                                                <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                                                 <input type="hidden" name="action" value="delete_bill">
                                                 <input type="hidden" name="bill_id" value="<?= htmlspecialchars($billId, ENT_QUOTES, 'UTF-8') ?>">
                                                 <button class="danger-button" type="submit">Remove</button>
@@ -3671,6 +3752,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             <h2 class="stage-title" id="liquidity-forecast-title">30-Day Liquidity</h2>
             <?php if ($emergencyFundAccounts !== []): ?>
                 <form class="chart-toggle" method="get" action="">
+                    <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                     <input type="hidden" name="include_emergency" value="0">
                     <label for="include-emergency-fund">
                         <input id="include-emergency-fund" name="include_emergency" type="checkbox" value="1" <?= $includeEmergencyFund ? 'checked' : '' ?>>
@@ -3761,6 +3843,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 <p class="empty">Save at least one daily tally before charting an account.</p>
             <?php else: ?>
                 <form class="chart-controls" method="get" action="">
+                    <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                     <div class="chart-control">
                         <label for="chart-account">Account</label>
                         <select id="chart-account" name="chart_account">
@@ -3834,6 +3917,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 <p class="empty">Add at least one bank or debt account before entering a daily tally.</p>
             <?php else: ?>
                 <form class="form-grid" method="post" action="">
+                    <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                     <input type="hidden" name="action" value="save_entry">
                     <div class="account-input">
                         <label for="entry-date">Tally date</label>
@@ -3935,6 +4019,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                             $isPaidThisMonth = (bool)($account['_is_paid_this_month'] ?? false);
                         ?>
                         <form class="payment-plan" method="post" action="">
+                            <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                             <input type="hidden" name="action" value="save_payment_plan">
                             <input type="hidden" name="account_id" value="<?= htmlspecialchars($accountId, ENT_QUOTES, 'UTF-8') ?>">
                             <div class="payment-account">
@@ -4000,7 +4085,9 @@ foreach ($creditCardAccounts as $creditCardAccount) {
 
         <section class="panel" aria-labelledby="configure-title">
             <h2 class="stage-title" id="configure-title">Configure Accounts</h2>
+            <p class="subtitle">New accounts belong to <?= ucfirst($financeScope) ?>. Moving an account also moves its balance history and linked bills.</p>
             <form class="entry" method="post" action="">
+                <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                 <input type="hidden" name="action" value="add_account">
                 <label for="account-name">Account name</label>
                 <input id="account-name" name="account_name" type="text" maxlength="80" placeholder="Account name" required>
@@ -4037,12 +4124,15 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                                         <span>Bank / <?= (bool)($account['liquid'] ?? true) ? 'Liquid' : 'Not liquid' ?></span>
                                     </div>
                                     <div class="account-actions">
+                                        <?= renderFinanceMoveForm('accounts', (string)$account['id'], $financeScope) ?>
                                         <form method="post" action="">
+                                            <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                                             <input type="hidden" name="action" value="toggle_liquidity">
                                             <input type="hidden" name="account_id" value="<?= htmlspecialchars((string)$account['id'], ENT_QUOTES, 'UTF-8') ?>">
                                             <button class="secondary-button" type="submit"><?= (bool)($account['liquid'] ?? true) ? 'Mark not liquid' : 'Mark liquid' ?></button>
                                         </form>
                                         <form method="post" action="">
+                                            <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                                             <input type="hidden" name="action" value="drop_account">
                                             <input type="hidden" name="account_id" value="<?= htmlspecialchars((string)$account['id'], ENT_QUOTES, 'UTF-8') ?>">
                                             <button class="danger-button" type="submit">Close</button>
@@ -4067,7 +4157,9 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                                         <span>Asset / Counts toward net worth</span>
                                     </div>
                                     <div class="account-actions">
+                                        <?= renderFinanceMoveForm('accounts', (string)$account['id'], $financeScope) ?>
                                         <form method="post" action="">
+                                            <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                                             <input type="hidden" name="action" value="drop_account">
                                             <input type="hidden" name="account_id" value="<?= htmlspecialchars((string)$account['id'], ENT_QUOTES, 'UTF-8') ?>">
                                             <button class="danger-button" type="submit">Close</button>
@@ -4092,15 +4184,18 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                                         <span>Liability / <?= (bool)($account['credit_card'] ?? true) ? 'Credit card' : 'Not credit card' ?></span>
                                     </div>
                                     <div class="account-actions">
+                                        <?= renderFinanceMoveForm('accounts', (string)$account['id'], $financeScope) ?>
                                         <?php if ((bool)($account['credit_card'] ?? true)): ?>
-                                            <a class="link-button" href="finance.php?account=<?= rawurlencode((string)$account['id']) ?>">Details</a>
+                                            <a class="link-button" href="finance.php?finance_scope=<?= $financeScope ?>&amp;account=<?= rawurlencode((string)$account['id']) ?>">Details</a>
                                         <?php endif; ?>
                                         <form method="post" action="">
+                                            <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                                             <input type="hidden" name="action" value="toggle_credit_card">
                                             <input type="hidden" name="account_id" value="<?= htmlspecialchars((string)$account['id'], ENT_QUOTES, 'UTF-8') ?>">
                                             <button class="secondary-button" type="submit"><?= (bool)($account['credit_card'] ?? true) ? 'Mark not card' : 'Mark credit card' ?></button>
                                         </form>
                                         <form method="post" action="">
+                                            <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                                             <input type="hidden" name="action" value="drop_account">
                                             <input type="hidden" name="account_id" value="<?= htmlspecialchars((string)$account['id'], ENT_QUOTES, 'UTF-8') ?>">
                                             <button class="danger-button" type="submit">Close</button>
@@ -4124,7 +4219,9 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                                     <strong><?= htmlspecialchars((string)$account['name'], ENT_QUOTES, 'UTF-8') ?></strong>
                                     <span><?= $account['type'] === 'debt' ? ((bool)($account['credit_card'] ?? true) ? 'Debt / Credit card' : 'Debt / Not credit card') : ($account['type'] === 'asset' ? 'Asset / Counts toward net worth' : ((bool)($account['liquid'] ?? true) ? 'Bank / Liquid' : 'Bank / Not liquid')) ?><?= $closedDateLabel !== '' ? ' / Closed ' . htmlspecialchars($closedDateLabel, ENT_QUOTES, 'UTF-8') : '' ?></span>
                                 </div>
+                                <?= renderFinanceMoveForm('accounts', (string)$account['id'], $financeScope) ?>
                                 <form method="post" action="">
+                                    <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                                     <input type="hidden" name="action" value="restore_account">
                                     <input type="hidden" name="account_id" value="<?= htmlspecialchars((string)$account['id'], ENT_QUOTES, 'UTF-8') ?>">
                                     <button class="secondary-button" type="submit">Restore</button>
@@ -4143,6 +4240,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
         <div class="lock-card">
             <h2 id="lock-title">Unlock Money Kata</h2>
             <form method="post" action="">
+                <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
                 <input type="hidden" name="action" value="unlock_app">
                 <label for="app-password">Password</label>
                 <input id="app-password" name="password" type="password" placeholder="Password" autocomplete="current-password" required data-lock-password>

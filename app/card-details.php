@@ -1,7 +1,7 @@
 <?php
 // Rendered by finance.php after loading the selected account.
 if ($detailCard === null): ?>
-    <section class="panel"><h2 class="stage-title">Card not found</h2><a href="finance.php?cards=1">Back to credit cards</a></section>
+    <section class="panel"><h2 class="stage-title">Card not found</h2><a href="finance.php?finance_scope=<?= $financeScope ?>&amp;cards=1">Back to credit cards</a></section>
 <?php else:
     $escapeCard = static function ($value): string { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); };
     $cardForm = $detailCard;
@@ -16,7 +16,7 @@ if ($detailCard === null): ?>
     $interest = estimateCardInterest($detailCard, $data['entries'], $now);
 ?>
 <section class="panel" aria-labelledby="card-details-title">
-    <p class="detail-nav"><a href="finance.php?cards=1">All credit cards</a></p>
+    <p class="detail-nav"><a href="finance.php?finance_scope=<?= $financeScope ?>&amp;cards=1">All credit cards</a></p>
     <h2 class="stage-title" id="card-details-title">Account details</h2>
     <?php if ($error !== ''): ?><p class="notice" role="alert"><?= $escapeCard($error) ?></p>
     <?php elseif (($_GET['saved'] ?? '') === '1'): ?><p class="notice" role="status">Card details saved.</p><?php endif; ?>
@@ -27,7 +27,8 @@ if ($detailCard === null): ?>
         <div class="metric"><span>Purchase APR</span><strong><?= $detailCard['apr'] === null ? 'Not set' : $escapeCard($detailCard['apr']) . '%' ?></strong></div>
     </div>
     <p class="subtitle">Balance and utilization use your latest recorded tally. Add a credit limit to see utilization and available credit.</p>
-    <form method="post" action="finance.php?account=<?= rawurlencode($detailAccountId) ?>">
+    <form method="post" action="finance.php?account=<?= rawurlencode($detailAccountId) ?>&amp;finance_scope=<?= $financeScope ?>">
+        <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
         <input type="hidden" name="action" value="save_card_details">
         <div class="account-inputs" style="margin-top: 20px">
             <div class="account-input"><label for="card-issuer">Issuer / bank</label><input id="card-issuer" name="issuer" maxlength="120" value="<?= $escapeCard($cardForm['issuer']) ?>" placeholder="e.g. Chase"></div>
@@ -40,7 +41,7 @@ if ($detailCard === null): ?>
         <p class="subtitle">Leave unknown values blank. Enter 0 for a zero APR or no annual fee.</p>
         <button type="submit">Save card details</button>
     </form>
-    <p class="detail-nav"><a href="finance.php?page=payment">Manage payment day and planned payments</a></p>
+    <p class="detail-nav"><a href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=payment">Manage payment day and planned payments</a></p>
 </section>
 <section class="panel" aria-labelledby="card-interest-title">
     <h2 class="stage-title" id="card-interest-title">Projected interest</h2>
