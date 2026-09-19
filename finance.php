@@ -123,6 +123,12 @@ function normalizeFinanceAccount(array $account): array
     return [
         'id' => (string)($account['id'] ?? bin2hex(random_bytes(8))),
         'name' => trim((string)($account['name'] ?? '')),
+        'issuer' => trim((string)($account['issuer'] ?? '')),
+        'notes' => (string)($account['notes'] ?? ''),
+        'apr' => is_numeric($account['apr'] ?? null) ? round((float)$account['apr'], 3) : null,
+        'credit_limit' => is_numeric($account['credit_limit'] ?? null) ? round((float)$account['credit_limit'], 2) : null,
+        'annual_fee' => is_numeric($account['annual_fee'] ?? null) ? round((float)$account['annual_fee'], 2) : null,
+        'statement_day' => (int)($account['statement_day'] ?? 0),
         'type' => $type,
         'liquid' => $type === 'bank' ? (bool)($account['liquid'] ?? true) : false,
         'credit_card' => $type === 'debt' ? (bool)($account['credit_card'] ?? true) : false,
@@ -1085,6 +1091,45 @@ if ($focusError !== '') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
     $action = (string)($_POST['action'] ?? '');
 
+    if ($action === 'save_card_details') {
+        $cardId = (string)($_GET['account'] ?? '');
+        $card = accountById(creditCardAccounts($data['accounts']), $cardId);
+        $changes = [];
+        if ($card === null) {
+            $error = 'Credit card not found.';
+        }
+        foreach (['apr' => 'APR', 'credit_limit' => 'Credit limit', 'annual_fee' => 'Annual fee'] as $field => $label) {
+            $raw = trim((string)($_POST[$field] ?? ''));
+            if ($raw !== '' && (!is_numeric($raw) || !is_finite((float)$raw) || (float)$raw < 0 || ($field === 'apr' && (float)$raw > 100))) {
+                $error = $label . ' must be a nonnegative number' . ($field === 'apr' ? ' between 0 and 100.' : '.');
+            }
+            $changes[$field] = $raw === '' ? null : round((float)$raw, $field === 'apr' ? 3 : 2);
+        }
+        $day = trim((string)($_POST['statement_day'] ?? ''));
+        if ($day !== '' && (!ctype_digit($day) || (int)$day < 1 || (int)$day > 31)) {
+            $error = 'Statement closing day must be between 1 and 31.';
+        }
+        $changes['statement_day'] = $day === '' ? 0 : (int)$day;
+        $changes['issuer'] = trim((string)($_POST['issuer'] ?? ''));
+        $changes['notes'] = trim((string)($_POST['notes'] ?? ''));
+        if (strlen($changes['issuer']) > 120 || strlen($changes['notes']) > 4000) {
+            $error = 'Keep the issuer under 120 bytes and notes under 4,000 bytes.';
+        }
+        if ($error === '') {
+            foreach ($data['accounts'] as &$account) {
+                if ($account['id'] === $cardId) {
+                    $account = array_merge($account, $changes, ['updated_at' => (new DateTimeImmutable())->format(DateTimeInterface::ATOM)]);
+                }
+            }
+            unset($account);
+            if (saveFinanceData($storageFile, $data)) {
+                header('Location: finance.php?' . http_build_query(['account' => $cardId, 'saved' => '1']));
+                exit;
+            }
+            $error = 'Could not save card details. Check that this folder is writable.';
+        }
+    }
+
     if ($action === 'add_account') {
         $name = trim((string)($_POST['account_name'] ?? ''));
         $type = (string)($_POST['account_type'] ?? 'bank');
@@ -1699,6 +1744,7 @@ usort($paymentPlanUpcomingAccounts, $sortPaymentPlanAccounts);
 usort($paymentPlanLaterAccounts, $sortPaymentPlanAccounts);
 usort($paymentPlanOtherDebtAccounts, $sortPaymentPlanAccounts);
 $detailAccountId = (string)($_GET['account'] ?? '');
+$detailCard = accountById(creditCardAccounts($data['accounts']), $detailAccountId);
 $isCreditCardView = (string)($_GET['cards'] ?? '') === '1' || $detailAccountId !== '';
 $isIncomeView = (string)($_GET['income'] ?? '') === '1' && !$isCreditCardView;
 $isBillsView = (string)($_GET['bills'] ?? '') === '1' && !$isCreditCardView && !$isIncomeView;
@@ -1735,6 +1781,11 @@ if ($isCreditCardView) {
     $pageSubtitle = 'Manage accounts, availability, and credit card status.';
 }
 $postedSelectedCreditCardIds = $_GET['cc'] ?? [];
+if ($detailCard !== null) {
+    $pageTitle = (string)$detailCard['name'];
+    $pageSubtitle = 'Card details and balance history.';
+    $postedSelectedCreditCardIds = [$detailAccountId];
+}
 if (!is_array($postedSelectedCreditCardIds)) {
     $postedSelectedCreditCardIds = [$postedSelectedCreditCardIds];
 }
@@ -1753,6 +1804,11 @@ if ($selectedCreditCardIds === [] && !$isEmptyCreditCardSelection) {
 $selectedCreditCardAccounts = array_values(array_filter($creditCardAccounts, function (array $account) use ($selectedCreditCardIds): bool {
     return in_array((string)$account['id'], $selectedCreditCardIds, true);
 }));
+if ($detailCard !== null) {
+    $selectedCreditCardIds = [$detailAccountId];
+    $selectedCreditCardAccounts = [$detailCard];
+    $isEmptyCreditCardSelection = false;
+}
 $creditCardRangeOptions = [
     '30' => 'Last 30 days',
     '90' => 'Last 90 days',
@@ -3013,12 +3069,18 @@ foreach ($creditCardAccounts as $creditCardAccount) {
         <?php if ($isCreditCardView): ?>
             <p class="detail-nav"><a href="finance.php">Back to Money Kata</a></p>
 
-            <?php if ($creditCardAccounts === []): ?>
+            <?php if ($detailAccountId !== ''): ?>
+                <?php require __DIR__ . '/app/card-details.php'; ?>
+            <?php endif; ?>
+
+            <?php if (($creditCardAccounts === [] && $detailCard === null) || ($detailAccountId !== '' && $detailCard === null)): ?>
                 <section class="panel" aria-labelledby="account-summary-title">
                     <h2 class="stage-title" id="account-summary-title">Credit Cards</h2>
                     <p class="empty">No active credit card accounts are configured yet.</p>
                 </section>
             <?php else: ?>
+            <?php if ($detailCard === null): ?>
+            <?php require __DIR__ . '/app/cards-interest-summary.php'; ?>
             <section class="panel" aria-labelledby="card-selector-title">
                 <h2 class="stage-title" id="card-selector-title">Cards Included</h2>
                 <div class="toggle-pills" aria-label="Credit card account toggles">
@@ -3036,10 +3098,16 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                     <span class="stat-pill"><?= $selectedCreditCardCount ?> selected</span>
                     <span class="stat-pill">Tap a pill to include or hide it</span>
                 </div>
+                <div class="chart-caption">
+                    <?php foreach ($creditCardAccounts as $card): ?>
+                        <a class="link-button" href="finance.php?account=<?= rawurlencode((string)$card['id']) ?>"><?= htmlspecialchars((string)$card['name'], ENT_QUOTES, 'UTF-8') ?> details</a>
+                    <?php endforeach; ?>
+                </div>
             </section>
 
+            <?php endif; ?>
             <section class="summary-panel" aria-labelledby="account-summary-title">
-                <h2 class="stage-title" id="account-summary-title">Selected Card Stats</h2>
+                <h2 class="stage-title" id="account-summary-title"><?= $detailCard !== null ? 'Card balance history' : 'Selected Card Stats' ?></h2>
                 <div class="summary-grid">
                     <div class="metric">
                         <span>Total balance</span>
@@ -3084,6 +3152,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 <h2 class="stage-title" id="account-balance-title"><?= htmlspecialchars($creditCardRangeLabel, ENT_QUOTES, 'UTF-8') ?></h2>
                 <form class="chart-controls" method="get" action="">
                     <input type="hidden" name="cards" value="1">
+                    <?php if ($detailCard !== null): ?><input type="hidden" name="account" value="<?= htmlspecialchars($detailAccountId, ENT_QUOTES, 'UTF-8') ?>"><?php endif; ?>
                     <?php foreach ($selectedCreditCardIds as $selectedCreditCardId): ?>
                         <input type="hidden" name="cc[]" value="<?= htmlspecialchars((string)$selectedCreditCardId, ENT_QUOTES, 'UTF-8') ?>">
                     <?php endforeach; ?>
@@ -4024,7 +4093,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                                     </div>
                                     <div class="account-actions">
                                         <?php if ((bool)($account['credit_card'] ?? true)): ?>
-                                            <a class="link-button" href="finance.php?cards=1">Details</a>
+                                            <a class="link-button" href="finance.php?account=<?= rawurlencode((string)$account['id']) ?>">Details</a>
                                         <?php endif; ?>
                                         <form method="post" action="">
                                             <input type="hidden" name="action" value="toggle_credit_card">
