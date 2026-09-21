@@ -2943,6 +2943,52 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             gap: 12px;
         }
 
+        .credit-card-content { min-width: 0; }
+        .accounts-sidebar { display: none; }
+
+        @media (min-width: 761px) {
+            main.has-accounts-sidebar { width: min(1260px, calc(100% - 32px)); }
+            .credit-card-layout {
+                display: grid;
+                grid-template-columns: 240px minmax(0, 1fr);
+                gap: 24px;
+                align-items: start;
+            }
+            .accounts-sidebar {
+                display: block;
+                position: sticky;
+                top: 24px;
+                max-height: calc(100vh - 48px);
+                overflow-y: auto;
+                padding: 20px 14px;
+                border: 1px solid #45474b;
+                border-radius: 8px;
+                background: #2c2e32;
+                color: #f5f5f6;
+            }
+            .accounts-sidebar h2 { margin: 0 10px 18px; font-size: 1.1rem; }
+            .accounts-sidebar h3 {
+                margin: 22px 10px 8px;
+                color: #bfc1c6;
+                font-size: .75rem;
+                letter-spacing: .08em;
+                text-transform: uppercase;
+            }
+            .accounts-sidebar ul { list-style: none; margin: 0; padding: 0; }
+            .accounts-sidebar a {
+                display: block;
+                padding: 11px 10px;
+                border-radius: 6px;
+                color: #f5f5f6;
+                font-size: .9rem;
+                overflow-wrap: anywhere;
+            }
+            .accounts-sidebar a:hover,
+            .accounts-sidebar a:focus-visible { background: #414449; }
+            .accounts-sidebar a[aria-current="page"] { background: #50545a; box-shadow: inset 3px 0 #7bd4c5; }
+            .accounts-sidebar p { margin: 10px; color: #bfc1c6; }
+        }
+
         @media (max-width: 1100px) {
             main.is-dashboard {
                 width: min(980px, calc(100% - 32px));
@@ -3095,7 +3141,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
     </style>
 </head>
 <body class="<?= $isNightMode ? 'night-mode' : '' ?>">
-    <main class="app-shell<?= $isMoneyDashboardView ? ' is-dashboard' : '' ?><?= $isAuthenticated ? '' : ' is-blurred' ?>" data-app-shell>
+    <main class="app-shell<?= $isMoneyDashboardView ? ' is-dashboard' : '' ?><?= $isCreditCardView ? ' has-accounts-sidebar' : '' ?><?= $isAuthenticated ? '' : ' is-blurred' ?>" data-app-shell>
         <?= kataRenderGlobalFocus(kataLoadMainFocus()) ?>
 
         <nav class="primary-nav" aria-label="Primary">
@@ -3138,6 +3184,9 @@ foreach ($creditCardAccounts as $creditCardAccount) {
         <?php if (($_GET['moved'] ?? '') === '1'): ?><p class="notice" role="status">Moved to the other view. Switch views to find it there.</p><?php endif; ?>
 
         <?php if ($isCreditCardView): ?>
+            <div class="credit-card-layout">
+                <?php require __DIR__ . '/app/accounts-sidebar.php'; ?>
+                <div class="credit-card-content">
             <p class="detail-nav"><a href="finance.php?finance_scope=<?= $financeScope ?>">Back to Money Kata</a></p>
 
             <?php if ($detailAccountId !== ''): ?>
@@ -3295,6 +3344,8 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 <?php endif; ?>
             </section>
             <?php endif; ?>
+                </div>
+            </div>
         <?php elseif ($isIncomeView): ?>
             <p class="detail-nav"><a href="finance.php?finance_scope=<?= $financeScope ?>">Back to Money Kata</a></p>
 
