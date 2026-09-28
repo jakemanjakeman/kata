@@ -75,6 +75,18 @@ try {
     checkScope($error === '' && $full['bills'][0]['scope'] === 'personal' && $full['bills'][0]['credit_card_id'] === '', 'Moving bill alone clears incompatible card');
     [$error, $full] = runScopePost('business', ['action' => 'delete_income', 'income_id' => 'income']);
     checkScope($error === '' && $full['incomes'] === [] && count($full['bills']) === 1, 'Scoped delete preserves other collections');
+    [$error, $full] = runScopePost('personal', ['action' => 'save_budget', 'budget_amounts' => ['groceries' => '450.25', 'savings' => '200']]);
+    checkScope($error === '' && $full['budgets']['personal']['groceries'] === 450.25, 'Budget amounts persist');
+    [$error, $full] = runScopePost('business', ['action' => 'save_budget', 'budget_amounts' => ['utilities' => '90']]);
+    checkScope($error === '' && $full['budgets']['personal']['groceries'] === 450.25 && (float)$full['budgets']['business']['utilities'] === 90.0, 'Budgets stay separate by scope');
+    foreach (['-1', '1.234', 'NaN', ['bad']] as $invalid) {
+        [$error, $full] = runScopePost('personal', ['action' => 'save_budget', 'budget_amounts' => ['groceries' => $invalid]]);
+        checkScope($error !== '' && $full['budgets']['personal']['groceries'] === 450.25, 'Invalid budget cannot overwrite saved amounts');
+    }
+    [$error, $full] = runScopePost('business', ['action' => 'add_account', 'account_name' => 'Budget preservation', 'account_type' => 'bank']);
+    checkScope($error === '' && $full['budgets']['personal']['groceries'] === 450.25 && (float)$full['budgets']['business']['utilities'] === 90.0, 'Other finance edits preserve budgets');
+    [$error, $full] = runScopePost('personal', ['action' => 'save_budget', 'budget_amounts' => []]);
+    checkScope($error === '' && (float)$full['budgets']['personal']['groceries'] === 0.0, 'Blank amounts clear a budget');
 } finally {
     unlink($storageFile);
     ob_end_clean();

@@ -22,6 +22,7 @@ function blankFinanceData(): array
         'entries' => [],
         'bills' => [],
         'incomes' => [],
+        'budgets' => [],
     ];
 }
 
@@ -238,6 +239,7 @@ function loadFinanceData(string $storageFile): array
         }
     }
 
+    $data['budgets'] = is_array($decoded['budgets'] ?? null) ? $decoded['budgets'] : [];
     ksort($data['entries']);
 
     return $data;
@@ -1101,6 +1103,25 @@ if ($focusError !== '') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
     $action = (string)($_POST['action'] ?? '');
+    if ($action === 'save_budget') {
+        $amounts = [];
+        foreach (billCategoryOptions() + ['savings' => 'Savings', 'other' => 'Other'] as $category => $label) {
+            $value = $_POST['budget_amounts'][$category] ?? '';
+            if (!is_string($value) || ($value !== '' && preg_match('/^\d{1,9}(?:\.\d{1,2})?$/D', $value) !== 1)) {
+                $error = 'Enter a nonnegative amount with up to two decimal places for each category.';
+                break;
+            }
+            $amounts[$category] = $value === '' ? 0.0 : (float)$value;
+        }
+        if ($error === '') {
+            $data['budgets'][$financeScope] = $amounts;
+            if (saveFinanceData($storageFile, $data)) {
+                header('Location: ' . financeScopeUrl('finance.php?page=budget&saved=1'));
+                exit;
+            }
+            $error = 'Could not save the budget. Check that this folder is writable.';
+        }
+    }
     // Reject IDs outside this view, including stale forms after a record moves.
     $targetCollections = ['account_id' => 'accounts', 'bill_id' => 'bills', 'income_id' => 'incomes'];
     if ($action === 'save_card_details') {
@@ -1812,18 +1833,22 @@ $moneyPage = (string)($_GET['page'] ?? 'dashboard');
 if ($moneyPage === 'settings') {
     $moneyPage = 'payment';
 }
-if (!in_array($moneyPage, ['dashboard', 'daily', 'payment', 'accounts'], true)) {
+if (!in_array($moneyPage, ['dashboard', 'daily', 'payment', 'accounts', 'budget'], true)) {
     $moneyPage = 'dashboard';
 }
 $isDailyCheckInView = $moneyPage === 'daily' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
 $isPaymentPlanView = $moneyPage === 'payment' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
 $isAccountsView = $moneyPage === 'accounts' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
-$isMoneyDashboardView = !$isCreditCardView && !$isIncomeView && !$isBillsView && !$isDailyCheckInView && !$isPaymentPlanView && !$isAccountsView;
+$isBudgetView = $moneyPage === 'budget' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
+$isMoneyDashboardView = !$isCreditCardView && !$isIncomeView && !$isBillsView && !$isDailyCheckInView && !$isPaymentPlanView && !$isAccountsView && !$isBudgetView;
 $pageTitle = 'Money Kata';
 $pageSubtitle = 'Watch the full money picture from your latest tally.';
 if ($isCreditCardView) {
     $pageTitle = 'Credit Cards';
     $pageSubtitle = 'See selected card balances together across the interval you choose.';
+} elseif ($isBudgetView) {
+    $pageTitle = 'Budget';
+    $pageSubtitle = 'Plan monthly spending around your income.';
 } elseif ($isIncomeView) {
     $pageTitle = 'Income';
     $pageSubtitle = 'Manage recurring income used by your liquidity forecast.';
@@ -3162,6 +3187,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                     <a class="<?= $isAccountsView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=accounts">Accounts</a>
                     <a class="<?= $isBillsView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;bills=1">Bills</a>
                     <a class="<?= $isIncomeView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;income=1">Income</a>
+                    <a class="<?= $isBudgetView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=budget">Budget</a>
                     <a class="<?= $isCreditCardView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;cards=1">Credit Cards</a>
                 </div>
             </div>
@@ -3346,6 +3372,8 @@ foreach ($creditCardAccounts as $creditCardAccount) {
             <?php endif; ?>
                 </div>
             </div>
+        <?php elseif ($isBudgetView): ?>
+            <?php require __DIR__ . '/app/budget.php'; ?>
         <?php elseif ($isIncomeView): ?>
             <p class="detail-nav"><a href="finance.php?finance_scope=<?= $financeScope ?>">Back to Money Kata</a></p>
 
