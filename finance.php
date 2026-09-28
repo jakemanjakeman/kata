@@ -2737,6 +2737,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
         input[type="text"],
         input[type="password"],
         input[type="date"],
+        #budget-form input[type="number"],
         select {
             width: 100%;
             min-height: 48px;
@@ -2752,6 +2753,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
         input[type="text"]:focus,
         input[type="password"]:focus,
         input[type="date"]:focus,
+        #budget-form input[type="number"]:focus,
         select:focus {
             border-color: var(--accent);
             box-shadow: 0 0 0 3px var(--focus-ring);

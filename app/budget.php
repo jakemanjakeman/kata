@@ -39,7 +39,7 @@ foreach ($budgetCategories as $category => $label) {
                 $value = $error !== '' ? ($_POST['budget_amounts'][$category] ?? '') : ($budgetAmounts[$category] ?? '');
                 $value = is_scalar($value) ? (string)$value : '';
                 ?>
-                <div class="field">
+                <div class="account-input">
                     <label for="budget-<?= $category ?>"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?> ($ / year)</label>
                     <input id="budget-<?= $category ?>" name="budget_amounts[<?= $category ?>]" type="number" min="0" max="99999999999.99" step="0.01" inputmode="decimal" placeholder="0.00" value="<?= htmlspecialchars($value, ENT_QUOTES, 'UTF-8') ?>" data-budget-amount aria-describedby="monthly-<?= $category ?>">
                     <p id="monthly-<?= $category ?>" data-monthly-amount><?= formatMoney(is_numeric($value) ? (float)$value / 12 : 0.0) ?> / month</p>
