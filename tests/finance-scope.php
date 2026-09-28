@@ -47,8 +47,14 @@ function runScopePost(string $scope, array $post): array
 }
 ob_start();
 try {
+    $fixture['budgets'] = ['personal' => ['groceries' => 450.25], 'business' => ['utilities' => 90]];
     file_put_contents($storageFile, json_encode($fixture));
     $full = loadFinanceData($storageFile);
+    checkScope($full['budgets']['personal']['groceries'] === 5403.0 && $full['budgets']['personal']['_period'] === 'annual', 'Legacy monthly budget converts to annual');
+    $financeScope = 'personal';
+    saveFinanceData($storageFile, filterFinanceScope($full, 'personal'));
+    $full = loadFinanceData($storageFile);
+    checkScope((float)$full['budgets']['personal']['groceries'] === 5403.0 && (float)$full['budgets']['business']['utilities'] === 1080.0, 'Both scopes migrate once and survive reload');
     $personal = filterFinanceScope($full, 'personal');
     $business = filterFinanceScope($full, 'business');
     checkScope(count($personal['accounts']) === 1 && $personal['accounts'][0]['scope'] === 'personal', 'Legacy records default to Personal');
@@ -87,6 +93,17 @@ try {
     checkScope($error === '' && $full['budgets']['personal']['groceries'] === 450.25 && (float)$full['budgets']['business']['utilities'] === 90.0, 'Other finance edits preserve budgets');
     [$error, $full] = runScopePost('personal', ['action' => 'save_budget', 'budget_amounts' => []]);
     checkScope($error === '' && (float)$full['budgets']['personal']['groceries'] === 0.0, 'Blank amounts clear a budget');
+    [$error, $full] = runScopePost('personal', ['action' => 'save_budget', 'budget_amounts' => ['holidays' => '1200', 'birthdays' => '600', 'vacations' => '3600']]);
+    checkScope($error === '' && (float)$full['budgets']['personal']['vacations'] === 3600.0 && $full['budgets']['personal']['_period'] === 'annual', 'Annual event buckets persist without multiplication');
+    $data = filterFinanceScope($full, 'personal');
+    $data['incomes'] = [['amount' => 1000, 'cadence' => 'monthly'], ['amount' => 1000, 'cadence' => 'biweekly']];
+    $financeScope = 'personal';
+    $_GET = []; $_POST = [];
+    ob_start();
+    require __DIR__ . '/../app/budget.php';
+    $html = ob_get_clean();
+    checkScope($annualIncome === 38000.0 && $budgetTotal === 5400.0, 'Annual outlook uses 12 monthly and 26 biweekly payments');
+    checkScope(str_contains($html, '$100.00 / month') && str_contains($html, 'id="monthly-total">$450.00') && str_contains($html, 'id="monthly-remaining">$2,716.67'), 'Rendered monthly outlook divides annual buckets and remaining income by 12');
 } finally {
     unlink($storageFile);
     ob_end_clean();

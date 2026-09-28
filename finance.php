@@ -55,6 +55,19 @@ function billCategoryLabel(string $category): string
     return (string)($options[$category] ?? $options['uncategorized']);
 }
 
+function budgetCategoryOptions(): array
+{
+    return billCategoryOptions() + [
+        'holidays' => 'Holidays',
+        'birthdays' => 'Birthdays',
+        'vacations' => 'Vacations',
+        'home_repairs' => 'Home repairs',
+        'medical' => 'Medical',
+        'savings' => 'Savings',
+        'other' => 'Other',
+    ];
+}
+
 function weekdayOptions(): array
 {
     return [
@@ -240,6 +253,22 @@ function loadFinanceData(string $storageFile): array
     }
 
     $data['budgets'] = is_array($decoded['budgets'] ?? null) ? $decoded['budgets'] : [];
+    foreach ($data['budgets'] as &$budget) {
+        if (!is_array($budget)) {
+            $budget = [];
+        }
+        // Existing budgets were entered monthly. Convert once on load so a
+        // subsequent save persists annual amounts without changing the plan.
+        if (($budget['_period'] ?? '') !== 'annual') {
+            foreach ($budget as $category => $amount) {
+                if ($category !== '_period') {
+                    $budget[$category] = is_numeric($amount) ? round((float)$amount * 12, 2) : 0.0;
+                }
+            }
+        }
+        $budget['_period'] = 'annual';
+    }
+    unset($budget);
     ksort($data['entries']);
 
     return $data;
@@ -1104,10 +1133,10 @@ if ($focusError !== '') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
     $action = (string)($_POST['action'] ?? '');
     if ($action === 'save_budget') {
-        $amounts = [];
-        foreach (billCategoryOptions() + ['savings' => 'Savings', 'other' => 'Other'] as $category => $label) {
+        $amounts = ['_period' => 'annual'];
+        foreach (budgetCategoryOptions() as $category => $label) {
             $value = $_POST['budget_amounts'][$category] ?? '';
-            if (!is_string($value) || ($value !== '' && preg_match('/^\d{1,9}(?:\.\d{1,2})?$/D', $value) !== 1)) {
+            if (!is_string($value) || ($value !== '' && preg_match('/^\d{1,11}(?:\.\d{1,2})?$/D', $value) !== 1)) {
                 $error = 'Enter a nonnegative amount with up to two decimal places for each category.';
                 break;
             }
@@ -1848,7 +1877,7 @@ if ($isCreditCardView) {
     $pageSubtitle = 'See selected card balances together across the interval you choose.';
 } elseif ($isBudgetView) {
     $pageTitle = 'Budget';
-    $pageSubtitle = 'Plan monthly spending around your income.';
+    $pageSubtitle = 'Plan your annual buckets, then see what to set aside each month.';
 } elseif ($isIncomeView) {
     $pageTitle = 'Income';
     $pageSubtitle = 'Manage recurring income used by your liquidity forecast.';
