@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
-$budgetCategories = budgetCategoryOptions();
+$budgetConfig = budgetConfiguration($data, $financeScope);
+$budgetCategories = budgetCategoryOptions($budgetConfig);
 $budgetAmounts = $data['budgets'][$financeScope] ?? [];
 $annualIncome = 0.0;
 foreach ($data['incomes'] as $income) {
@@ -13,6 +14,7 @@ foreach ($budgetCategories as $category => $label) {
     $budgetTotal += (float)($budgetAmounts[$category] ?? 0);
 }
 ?>
+<p class="detail-nav"><a href="finance.php?page=budget&amp;categories=1&amp;finance_scope=<?= $financeScope ?>">Configure categories &amp; parent buckets</a></p>
 <section class="summary-panel" aria-labelledby="budget-summary-title">
     <h2 class="stage-title" id="budget-summary-title"><?= ucfirst($financeScope) ?> Annual Outlook</h2>
     <div class="summary-grid">
@@ -33,9 +35,19 @@ foreach ($budgetCategories as $category => $label) {
     <form method="post" action="finance.php?page=budget&amp;finance_scope=<?= $financeScope ?>" id="budget-form">
         <input type="hidden" name="action" value="save_budget">
         <input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
+        <?php foreach ($budgetConfig['buckets'] as $bucketId => $bucketName): ?>
+        <?php
+        $bucketCategories = array_filter($budgetConfig['categories'], static fn(array $item): bool => $item['bucket'] === $bucketId);
+        $bucketTotal = array_sum(array_map(static fn(array $item): float => (float)($budgetAmounts[$item['id']] ?? 0), $bucketCategories));
+        ?>
+        <section data-budget-bucket>
+        <h3 class="stage-title"><?= htmlspecialchars($bucketName, ENT_QUOTES, 'UTF-8') ?></h3>
+        <p data-bucket-total aria-live="polite"><?= formatMoney($bucketTotal) ?> / year · <?= formatMoney($bucketTotal / 12) ?> / month · <?= number_format($budgetTotal > 0 ? $bucketTotal / $budgetTotal * 100 : 0, 1) ?>% of budget</p>
         <div class="summary-grid">
-            <?php foreach ($budgetCategories as $category => $label): ?>
+            <?php foreach ($bucketCategories as $categoryConfig): ?>
                 <?php
+                $category = $categoryConfig['id'];
+                $label = $categoryConfig['name'];
                 $value = $error !== '' ? ($_POST['budget_amounts'][$category] ?? '') : ($budgetAmounts[$category] ?? '');
                 $value = is_scalar($value) ? (string)$value : '';
                 ?>
@@ -46,6 +58,8 @@ foreach ($budgetCategories as $category => $label) {
                 </div>
             <?php endforeach; ?>
         </div>
+        </section>
+        <?php endforeach; ?>
         <p id="budget-status" role="status" aria-live="polite"></p>
         <button type="submit">Save Annual Budget</button>
     </form>
@@ -69,6 +83,11 @@ foreach ($budgetCategories as $category => $label) {
     function updateBudget(edited = false) {
         const total = inputs.reduce((sum, input) => sum + Math.round((Number(input.value) || 0) * 100), 0) / 100;
         const remaining = Math.round((income - total) * 100) / 100;
+        form.querySelectorAll('[data-budget-bucket]').forEach(bucket => {
+            const amount = [...bucket.querySelectorAll('[data-budget-amount]')].reduce((sum, input) => sum + Math.round((Number(input.value) || 0) * 100), 0) / 100;
+            const share = total > 0 ? amount / total * 100 : 0;
+            bucket.querySelector('[data-bucket-total]').textContent = money.format(amount) + ' / year · ' + money.format(amount / 12) + ' / month · ' + share.toFixed(1) + '% of budget';
+        });
         inputs.forEach(input => {
             input.parentElement.querySelector('[data-monthly-amount]').textContent = money.format((Number(input.value) || 0) / 12) + ' / month';
         });

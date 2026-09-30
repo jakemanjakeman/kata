@@ -55,8 +55,11 @@ function billCategoryLabel(string $category): string
     return (string)($options[$category] ?? $options['uncategorized']);
 }
 
-function budgetCategoryOptions(): array
+function budgetCategoryOptions(?array $config = null): array
 {
+    if ($config !== null) {
+        return array_column($config['categories'], 'name', 'id');
+    }
     return billCategoryOptions() + [
         'holidays' => 'Holidays',
         'birthdays' => 'Birthdays',
@@ -66,6 +69,58 @@ function budgetCategoryOptions(): array
         'savings' => 'Savings',
         'other' => 'Other',
     ];
+}
+
+function budgetConfiguration(array $data, string $scope): array
+{
+    if (isset($data['budget_config'][$scope])) {
+        return $data['budget_config'][$scope];
+    }
+    $categories = [];
+    foreach (budgetCategoryOptions() as $id => $name) {
+        $bucket = $id === 'childcare' ? 'child' : (in_array($id, ['shopping', 'dining_out', 'streaming_services', 'charity', 'holidays', 'birthdays', 'vacations', 'other'], true) ? 'discretionary' : 'household');
+        $categories[] = ['id' => $id, 'name' => $name, 'bucket' => $bucket];
+    }
+    return ['buckets' => ['household' => 'Household', 'child' => 'Child', 'discretionary' => 'Discretionary'], 'categories' => $categories];
+}
+
+function editBudgetConfiguration(array $config, array $post): array
+{
+    $name = static function ($value): string {
+        if (!is_string($value) || trim($value) === '' || strlen(trim($value)) > 100) {
+            throw new InvalidArgumentException('Names must contain between 1 and 100 characters.');
+        }
+        return trim($value);
+    };
+    foreach ($config['buckets'] as $id => &$label) {
+        $label = $name($post['bucket_names'][$id] ?? null);
+    }
+    unset($label);
+    if (($post['new_bucket'] ?? '') !== '') {
+        $config['buckets']['bucket_' . bin2hex(random_bytes(8))] = $name($post['new_bucket']);
+    }
+    foreach ($config['categories'] as &$category) {
+        $category['name'] = $name($post['category_names'][$category['id']] ?? null);
+        $bucket = $post['category_buckets'][$category['id']] ?? null;
+        if (!is_string($bucket) || !isset($config['buckets'][$bucket])) {
+            throw new InvalidArgumentException('Choose a parent bucket for each category.');
+        }
+        $category['bucket'] = $bucket;
+    }
+    unset($category);
+    if (($post['new_category'] ?? '') !== '') {
+        $bucket = $post['new_category_bucket'] ?? null;
+        if (!is_string($bucket) || !isset($config['buckets'][$bucket])) {
+            throw new InvalidArgumentException('Choose a parent bucket for the new category.');
+        }
+        $config['categories'][] = ['id' => 'category_' . bin2hex(random_bytes(8)), 'name' => $name($post['new_category']), 'bucket' => $bucket];
+    }
+    $labels = array_map('strtolower', array_values($config['buckets']));
+    $categoryLabels = array_map('strtolower', array_column($config['categories'], 'name'));
+    if (count(array_unique($labels)) !== count($labels) || count(array_unique($categoryLabels)) !== count($categoryLabels)) {
+        throw new InvalidArgumentException('Use a unique name for each bucket and each category.');
+    }
+    return $config;
 }
 
 function weekdayOptions(): array
@@ -252,6 +307,7 @@ function loadFinanceData(string $storageFile): array
         }
     }
 
+    $data['budget_config'] = is_array($decoded['budget_config'] ?? null) ? $decoded['budget_config'] : [];
     $data['budgets'] = is_array($decoded['budgets'] ?? null) ? $decoded['budgets'] : [];
     foreach ($data['budgets'] as &$budget) {
         if (!is_array($budget)) {
@@ -1132,9 +1188,22 @@ if ($focusError !== '') {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
     $action = (string)($_POST['action'] ?? '');
+    if ($action === 'save_budget_config') {
+        try {
+            $config = editBudgetConfiguration(budgetConfiguration($data, $financeScope), $_POST);
+            $data['budget_config'][$financeScope] = $config;
+            if (saveFinanceData($storageFile, $data)) {
+                header('Location: ' . financeScopeUrl('finance.php?page=budget&categories=1&saved=1'));
+                exit;
+            }
+            $error = 'Could not save category settings. Check that this folder is writable.';
+        } catch (InvalidArgumentException $exception) {
+            $error = $exception->getMessage();
+        }
+    }
     if ($action === 'save_budget') {
         $amounts = ['_period' => 'annual'];
-        foreach (budgetCategoryOptions() as $category => $label) {
+        foreach (budgetCategoryOptions(budgetConfiguration($data, $financeScope)) as $category => $label) {
             $value = $_POST['budget_amounts'][$category] ?? '';
             if (!is_string($value) || ($value !== '' && preg_match('/^\d{1,11}(?:\.\d{1,2})?$/D', $value) !== 1)) {
                 $error = 'Enter a nonnegative amount with up to two decimal places for each category.';
@@ -3404,7 +3473,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                 </div>
             </div>
         <?php elseif ($isBudgetView): ?>
-            <?php require __DIR__ . '/app/budget.php'; ?>
+            <?php require __DIR__ . ((($_GET['categories'] ?? '') === '1') ? '/app/budget-categories.php' : '/app/budget.php'); ?>
         <?php elseif ($isIncomeView): ?>
             <p class="detail-nav"><a href="finance.php?finance_scope=<?= $financeScope ?>">Back to Money Kata</a></p>
 
