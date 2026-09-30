@@ -14,6 +14,42 @@ foreach ($budgetCategories as $category => $label) {
     $budgetTotal += (float)($budgetAmounts[$category] ?? 0);
 }
 ?>
+<style>
+    .budget-pies { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .budget-pie-card { text-align: center; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+    .budget-pie-card h2 { font-size: 18px; margin: 0 0 4px; }
+    .budget-pie-share { display: block; font-size: clamp(32px, 4vw, 48px); font-weight: 800; line-height: 1.1; margin-bottom: 14px; }
+    .budget-bucket-pie { width: min(100%, 160px); aspect-ratio: 1; border-radius: 50%; margin: 0 auto; background: #cbd5e1; }
+    .budget-pie-empty { margin: 10px 0 0; font-size: 13px; }
+    @media (max-width: 600px) {
+        .budget-pies { display: flex; overflow-x: auto; gap: 10px; padding-bottom: 8px; }
+        .budget-pie-card { flex: 0 0 150px; padding: 12px; }
+        .budget-bucket-pie { width: 120px; }
+    }
+</style>
+<div class="budget-pies" aria-label="Parent bucket shares of the allocated budget">
+    <?php foreach ($budgetConfig['buckets'] as $bucketId => $bucketName): ?>
+        <?php
+        $pieCategories = array_values(array_filter($budgetConfig['categories'], static fn(array $item): bool => $item['bucket'] === $bucketId));
+        $pieTotal = array_sum(array_map(static fn(array $item): float => max(0, (float)($budgetAmounts[$item['id']] ?? 0)), $pieCategories));
+        $pieShare = $budgetTotal > 0 ? $pieTotal / $budgetTotal * 100 : 0;
+        $pieStops = []; $piePosition = 0;
+        foreach ($pieCategories as $index => $item) {
+            $amount = max(0, (float)($budgetAmounts[$item['id']] ?? 0));
+            if ($amount <= 0 || $pieTotal <= 0) { continue; }
+            $end = $piePosition + $amount / $pieTotal * 100;
+            $pieStops[] = 'hsl(' . (($index * 137 + 215) % 360) . ' 65% 52%) ' . number_format($piePosition, 6, '.', '') . '% ' . number_format($end, 6, '.', '') . '%';
+            $piePosition = $end;
+        }
+        ?>
+        <section class="budget-pie-card" data-bucket-chart="<?= htmlspecialchars($bucketId, ENT_QUOTES, 'UTF-8') ?>">
+            <h2><?= htmlspecialchars($bucketName, ENT_QUOTES, 'UTF-8') ?></h2>
+            <strong class="budget-pie-share" data-pie-share><?= number_format($pieShare, 1) ?>%</strong>
+            <div class="budget-bucket-pie" data-pie role="img" aria-label="<?= htmlspecialchars($bucketName, ENT_QUOTES, 'UTF-8') ?>: <?= number_format($pieShare, 1) ?>% of budget; slices show subcategory allocations" style="background: <?= $pieStops === [] ? '#cbd5e1' : 'conic-gradient(' . implode(', ', $pieStops) . ')' ?>"></div>
+            <p class="budget-pie-empty" data-pie-empty <?= $pieTotal > 0 ? 'hidden' : '' ?>>No budget allocated</p>
+        </section>
+    <?php endforeach; ?>
+</div>
 <p class="detail-nav"><a href="finance.php?page=budget&amp;categories=1&amp;finance_scope=<?= $financeScope ?>">Configure categories &amp; parent buckets</a></p>
 <section class="summary-panel" aria-labelledby="budget-summary-title">
     <h2 class="stage-title" id="budget-summary-title"><?= ucfirst($financeScope) ?> Annual Outlook</h2>
@@ -40,7 +76,7 @@ foreach ($budgetCategories as $category => $label) {
         $bucketCategories = array_filter($budgetConfig['categories'], static fn(array $item): bool => $item['bucket'] === $bucketId);
         $bucketTotal = array_sum(array_map(static fn(array $item): float => (float)($budgetAmounts[$item['id']] ?? 0), $bucketCategories));
         ?>
-        <section data-budget-bucket>
+        <section data-budget-bucket="<?= htmlspecialchars($bucketId, ENT_QUOTES, 'UTF-8') ?>">
         <h3 class="stage-title"><?= htmlspecialchars($bucketName, ENT_QUOTES, 'UTF-8') ?></h3>
         <p data-bucket-total aria-live="polite"><?= formatMoney($bucketTotal) ?> / year · <?= formatMoney($bucketTotal / 12) ?> / month · <?= number_format($budgetTotal > 0 ? $bucketTotal / $budgetTotal * 100 : 0, 1) ?>% of budget</p>
         <div class="summary-grid">
@@ -86,6 +122,21 @@ foreach ($budgetCategories as $category => $label) {
         form.querySelectorAll('[data-budget-bucket]').forEach(bucket => {
             const amount = [...bucket.querySelectorAll('[data-budget-amount]')].reduce((sum, input) => sum + Math.round((Number(input.value) || 0) * 100), 0) / 100;
             const share = total > 0 ? amount / total * 100 : 0;
+            const card = [...document.querySelectorAll('[data-bucket-chart]')].find(card => card.dataset.bucketChart === bucket.dataset.budgetBucket);
+            const values = [...bucket.querySelectorAll('[data-budget-amount]')].map(input => Math.max(0, Math.round((Number(input.value) || 0) * 100)));
+            const pieTotal = values.reduce((sum, value) => sum + value, 0);
+            let position = 0;
+            const stops = [];
+            values.forEach((value, index) => {
+                if (!value || !pieTotal) return;
+                const end = position + value / pieTotal * 100;
+                stops.push(`hsl(${(index * 137 + 215) % 360} 65% 52%) ${position}% ${end}%`);
+                position = end;
+            });
+            card.querySelector('[data-pie-share]').textContent = share.toFixed(1) + '%';
+            card.querySelector('[data-pie]').style.background = stops.length ? `conic-gradient(${stops.join(', ')})` : '#cbd5e1';
+            card.querySelector('[data-pie]').setAttribute('aria-label', card.querySelector('h2').textContent + ': ' + share.toFixed(1) + '% of budget; slices show subcategory allocations');
+            card.querySelector('[data-pie-empty]').hidden = pieTotal > 0;
             bucket.querySelector('[data-bucket-total]').textContent = money.format(amount) + ' / year · ' + money.format(amount / 12) + ' / month · ' + share.toFixed(1) + '% of budget';
         });
         inputs.forEach(input => {
