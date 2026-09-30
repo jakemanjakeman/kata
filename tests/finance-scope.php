@@ -135,6 +135,44 @@ try {
     checkScope(str_contains($html, 'Family holidays') && str_contains($html, 'School supplies') && str_contains($html, 'Long term'), 'Budget renders custom categories and buckets');
     ob_start(); require __DIR__ . '/../app/budget-categories.php'; $html = ob_get_clean();
     checkScope(str_contains($html, 'Save Category Settings') && str_contains($html, 'value="child" selected'), 'Settings render saved assignments');
+    checkScope(str_contains($html, 'name="delete_categories[]"') && str_contains($html, '$250.00 annual allocation'), 'Deletion controls explain the allocation being removed');
+    $settingsPost = static function (array $config): array {
+        return ['action' => 'save_budget_config', 'bucket_names' => $config['buckets'], 'category_names' => array_column($config['categories'], 'name', 'id'), 'category_buckets' => array_column($config['categories'], 'bucket', 'id')];
+    };
+    $post = $settingsPost($config);
+    $post['delete_buckets'] = ['child'];
+    [$error, $full] = runScopePost('personal', $post);
+    checkScope($error !== '' && budgetConfiguration($full, 'personal') === $config && (float)$full['budgets']['personal'][$newId] === 250.0, 'Occupied bucket deletion is atomic and rejected');
+    foreach (['bad', ['missing'], [[$newId]]] as $invalid) {
+        $post = $settingsPost($config); $post['delete_categories'] = $invalid;
+        [$error, $full] = runScopePost('personal', $post);
+        checkScope($error !== '' && budgetConfiguration($full, 'personal') === $config, 'Malformed or stale deletion rejected');
+    }
+    $post = $settingsPost(budgetConfiguration($full, 'business')); $post['delete_categories'] = [$newId];
+    [$error, $full] = runScopePost('business', $post);
+    checkScope($error !== '' && (float)$full['budgets']['personal'][$newId] === 250.0, 'Other scope cannot delete a custom category');
+    $post = $settingsPost($config); $post['delete_categories'] = [$newId];
+    $post['delete_buckets'] = ['child'];
+    foreach ($post['category_buckets'] as &$bucket) { if ($bucket === 'child') { $bucket = 'household'; } } unset($bucket);
+    [$error, $full] = runScopePost('personal', $post);
+    $config = budgetConfiguration($full, 'personal');
+    checkScope($error === '' && !isset(budgetCategoryOptions($config)[$newId]) && !isset($full['budgets']['personal'][$newId]), 'Category deletion removes its saved allocation');
+    checkScope(!isset($config['buckets']['child']) && (float)$full['budgets']['personal']['holidays'] === 1200.0, 'Moving categories permits bucket deletion and preserves their allocations');
+    checkScope((float)$full['budgets']['business']['utilities'] === 900.0 && isset(budgetConfiguration($full, 'business')['buckets']['child']), 'Deletion preserves the other scope');
+    $post = $settingsPost($config); $post['delete_categories'] = array_column($config['categories'], 'id');
+    $post['delete_buckets'] = array_keys($config['buckets']);
+    [$error, $full] = runScopePost('personal', $post);
+    checkScope($error !== '' && budgetConfiguration($full, 'personal') === $config, 'Last bucket cannot be deleted without replacement');
+    unset($post['delete_buckets']);
+    [$error, $full] = runScopePost('personal', $post);
+    checkScope($error === '' && budgetConfiguration($full, 'personal')['categories'] === [], 'All categories can be deleted without defaults returning');
+    checkScope($full['budgets']['personal'] === ['_period' => 'annual'], 'Deleted allocations are cleared while preserving annual period');
+    $financeScope = 'personal'; $data = filterFinanceScope($full, 'personal'); $_GET = []; $_POST = [];
+    ob_start(); require __DIR__ . '/../app/budget-categories.php'; $html = ob_get_clean();
+    checkScope(str_contains($html, 'No categories yet.'), 'Empty category list provides a creation prompt');
+    $post = $settingsPost(budgetConfiguration($full, 'personal')); $post['new_category'] = 'Fresh start'; $post['new_category_bucket'] = 'household';
+    [$error, $full] = runScopePost('personal', $post);
+    checkScope($error === '' && count(budgetConfiguration($full, 'personal')['categories']) === 1, 'Categories can be created after deleting all categories');
 } finally {
     unlink($storageFile);
     ob_end_clean();

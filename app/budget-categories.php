@@ -3,11 +3,14 @@ declare(strict_types=1);
 $config = budgetConfiguration($data, $financeScope);
 $escape = static fn($value): string => htmlspecialchars(is_scalar($value) ? (string)$value : '', ENT_QUOTES, 'UTF-8');
 $posted = $error !== '' && ($_POST['action'] ?? '') === 'save_budget_config';
+$deletedCategories = $posted && is_array($_POST['delete_categories'] ?? null) ? $_POST['delete_categories'] : [];
+$deletedBuckets = $posted && is_array($_POST['delete_buckets'] ?? null) ? $_POST['delete_buckets'] : [];
 ?>
 <p class="detail-nav"><a href="finance.php?page=budget&amp;finance_scope=<?= $financeScope ?>">Back to budget</a></p>
 <section class="panel" aria-labelledby="category-settings-title">
     <h2 class="stage-title" id="category-settings-title"><?= ucfirst($financeScope) ?> Budget Categories</h2>
-    <p>Rename categories and assign them to parent buckets. Your saved budget amounts stay with each category.</p>
+    <p>Add or rename categories and assign them to parent buckets. Your saved budget amounts stay with each category when you rename or move it.</p>
+    <p>To delete, select the items below and save. Deleting a category also removes its annual budget allocation. Move or delete a bucket's categories before deleting the bucket. Keep at least one parent bucket.</p>
     <?php if ($error !== ''): ?><p class="notice" role="alert"><?= $escape($error) ?></p><?php endif; ?>
     <?php if (($_GET['saved'] ?? '') === '1' && $error === ''): ?><p class="notice" role="status">Category settings saved.</p><?php endif; ?>
     <form method="post" action="finance.php?page=budget&amp;categories=1&amp;finance_scope=<?= $financeScope ?>" class="form-grid">
@@ -19,6 +22,7 @@ $posted = $error !== '' && ($_POST['action'] ?? '') === 'save_budget_config';
                 <div class="account-input">
                     <label for="bucket-<?= $escape($id) ?>">Bucket name</label>
                     <input id="bucket-<?= $escape($id) ?>" name="bucket_names[<?= $escape($id) ?>]" value="<?= $escape($posted ? ($_POST['bucket_names'][$id] ?? '') : $name) ?>" maxlength="100" required>
+                    <label><input type="checkbox" name="delete_buckets[]" value="<?= $escape($id) ?>" <?= in_array($id, $deletedBuckets, true) ? 'checked' : '' ?>> Delete <?= $escape($name) ?> bucket</label>
                 </div>
             <?php endforeach; ?>
             <div class="account-input">
@@ -28,12 +32,14 @@ $posted = $error !== '' && ($_POST['action'] ?? '') === 'save_budget_config';
         </div>
         <p>Save a new parent bucket before assigning categories to it.</p>
         <h3 class="stage-title">Categories</h3>
+        <?php if ($config['categories'] === []): ?><p class="empty">No categories yet. Add your first category below.</p><?php endif; ?>
         <?php foreach ($config['categories'] as $category): ?>
             <?php $id = $category['id']; $selected = $posted ? ($_POST['category_buckets'][$id] ?? '') : $category['bucket']; ?>
             <div class="summary-grid">
                 <div class="account-input">
                     <label for="category-<?= $escape($id) ?>">Category name</label>
                     <input id="category-<?= $escape($id) ?>" name="category_names[<?= $escape($id) ?>]" value="<?= $escape($posted ? ($_POST['category_names'][$id] ?? '') : $category['name']) ?>" maxlength="100" required>
+                    <label><input type="checkbox" name="delete_categories[]" value="<?= $escape($id) ?>" <?= in_array($id, $deletedCategories, true) ? 'checked' : '' ?>> Delete <?= $escape($category['name']) ?> and its <?= $escape(formatMoney((float)($data['budgets'][$financeScope][$id] ?? 0))) ?> annual allocation</label>
                 </div>
                 <div class="account-input">
                     <label for="parent-<?= $escape($id) ?>">Parent bucket for <?= $escape($category['name']) ?></label>

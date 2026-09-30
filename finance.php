@@ -86,6 +86,28 @@ function budgetConfiguration(array $data, string $scope): array
 
 function editBudgetConfiguration(array $config, array $post): array
 {
+    foreach (['bucket_names', 'category_names', 'category_buckets'] as $field) {
+        if (!is_array($post[$field] ?? [])) {
+            throw new InvalidArgumentException('Invalid category settings. Reload the page and try again.');
+        }
+    }
+    $deletions = static function ($ids, array $allowed): array {
+        if (!is_array($ids)) {
+            throw new InvalidArgumentException('Invalid deletion selection. Reload the page and try again.');
+        }
+        foreach ($ids as $id) {
+            if (!is_string($id) || !in_array($id, $allowed, true)) {
+                throw new InvalidArgumentException('A selected category or bucket no longer exists in this budget. Reload the page and try again.');
+            }
+        }
+        return $ids;
+    };
+    $deletedCategories = $deletions($post['delete_categories'] ?? [], array_column($config['categories'], 'id'));
+    $deletedBuckets = $deletions($post['delete_buckets'] ?? [], array_keys($config['buckets']));
+    $config['categories'] = array_values(array_filter($config['categories'], static fn(array $category): bool => !in_array($category['id'], $deletedCategories, true)));
+    foreach ($deletedBuckets as $id) {
+        unset($config['buckets'][$id]);
+    }
     $name = static function ($value): string {
         if (!is_string($value) || trim($value) === '' || strlen(trim($value)) > 100) {
             throw new InvalidArgumentException('Names must contain between 1 and 100 characters.');
@@ -99,11 +121,14 @@ function editBudgetConfiguration(array $config, array $post): array
     if (($post['new_bucket'] ?? '') !== '') {
         $config['buckets']['bucket_' . bin2hex(random_bytes(8))] = $name($post['new_bucket']);
     }
+    if ($config['buckets'] === []) {
+        throw new InvalidArgumentException('Keep at least one parent bucket, or add a replacement.');
+    }
     foreach ($config['categories'] as &$category) {
         $category['name'] = $name($post['category_names'][$category['id']] ?? null);
         $bucket = $post['category_buckets'][$category['id']] ?? null;
         if (!is_string($bucket) || !isset($config['buckets'][$bucket])) {
-            throw new InvalidArgumentException('Choose a parent bucket for each category.');
+            throw new InvalidArgumentException('Choose a parent bucket for each category. Move or delete its categories before deleting a bucket.');
         }
         $category['bucket'] = $bucket;
     }
@@ -1191,8 +1216,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAuthenticated) {
     if ($action === 'save_budget_config') {
         try {
             $config = editBudgetConfiguration(budgetConfiguration($data, $financeScope), $_POST);
-            $data['budget_config'][$financeScope] = $config;
-            if (saveFinanceData($storageFile, $data)) {
+            $updatedData = $data;
+            $updatedData['budget_config'][$financeScope] = $config;
+            foreach ($_POST['delete_categories'] ?? [] as $categoryId) {
+                unset($updatedData['budgets'][$financeScope][$categoryId]);
+            }
+            if (saveFinanceData($storageFile, $updatedData)) {
                 header('Location: ' . financeScopeUrl('finance.php?page=budget&categories=1&saved=1'));
                 exit;
             }
