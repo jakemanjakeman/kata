@@ -3295,7 +3295,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
     </style>
 </head>
 <body class="<?= $isNightMode ? 'night-mode' : '' ?>">
-    <main class="app-shell<?= $isMoneyDashboardView ? ' is-dashboard' : '' ?><?= $isCreditCardView ? ' has-accounts-sidebar' : '' ?><?= $isAuthenticated ? '' : ' is-blurred' ?>" data-app-shell>
+    <main class="app-shell<?= ($isMoneyDashboardView || $isBudgetView) ? ' is-dashboard' : '' ?><?= $isCreditCardView ? ' has-accounts-sidebar' : '' ?><?= $isAuthenticated ? '' : ' is-blurred' ?>" data-app-shell>
         <?= kataRenderGlobalFocus(kataLoadMainFocus()) ?>
 
         <nav class="primary-nav" aria-label="Primary">
