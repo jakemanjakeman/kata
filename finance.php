@@ -1004,6 +1004,44 @@ function buildChartPolyline(array $series, float $minValue, float $maxValue, int
     return implode(' ', $points);
 }
 
+
+function calculateCreditCardPayoff(array $cards, array $entry, float $monthlyBudget, string $strategy, DateTimeImmutable $startDate): array
+{
+    $working = [];
+    foreach ($cards as $card) {
+        $id = (string)($card['id'] ?? '');
+        if ($id === '' || !array_key_exists($id, $entry['balances'] ?? [])) continue;
+        $balance = abs((float)$entry['balances'][$id]);
+        if ($balance <= 0.005) continue;
+        $working[$id] = ['id'=>$id,'name'=>(string)($card['name'] ?? 'Credit card'),'balance'=>round($balance,2),'apr'=>max(0.0,(float)($card['apr'] ?? 0.0)),'minimum'=>max(0.0,(float)($card['minimum_payment'] ?? 0.0))];
+    }
+    $minimumTotal = array_sum(array_column($working, 'minimum'));
+    if ($working === []) return ['error'=>'','months'=>0,'interest'=>0.0,'paid'=>0.0,'schedule'=>[],'minimum_total'=>0.0];
+    if ($monthlyBudget <= 0) return ['error'=>'Enter a monthly payoff budget greater than zero.','schedule'=>[],'minimum_total'=>round($minimumTotal,2)];
+    if ($monthlyBudget + 0.005 < $minimumTotal) return ['error'=>'Your monthly budget must cover the saved minimum payments (' . formatMoney($minimumTotal) . ').','schedule'=>[],'minimum_total'=>round($minimumTotal,2)];
+    $schedule=[]; $totalInterest=0.0; $totalPaid=0.0; $month=0;
+    while ($working !== [] && $month < 600) {
+        $month++; $monthInterest=0.0;
+        foreach ($working as &$card) { $interest=round($card['balance']*($card['apr']/100.0/12.0),2); $card['balance']=round($card['balance']+$interest,2); $monthInterest+=$interest; } unset($card);
+        $remainingBudget=$monthlyBudget; $monthPaid=0.0;
+        foreach ($working as &$card) { $payment=min($card['balance'],$card['minimum'],$remainingBudget); $card['balance']=round($card['balance']-$payment,2); $remainingBudget=round($remainingBudget-$payment,2); $monthPaid+=$payment; } unset($card);
+        $active=array_filter($working,static fn(array $card):bool=>$card['balance']>0.005);
+        while ($remainingBudget>0.005 && $active!==[]) {
+            uasort($active,static function(array $a,array $b) use($strategy):int { return $strategy==='snowball' ? ($a['balance']<=>$b['balance'] ?: $b['apr']<=>$a['apr']) : ($b['apr']<=>$a['apr'] ?: $a['balance']<=>$b['balance']); });
+            $targetId=(string)array_key_first($active); $payment=min($working[$targetId]['balance'],$remainingBudget);
+            $working[$targetId]['balance']=round($working[$targetId]['balance']-$payment,2); $remainingBudget=round($remainingBudget-$payment,2); $monthPaid+=$payment;
+            if ($working[$targetId]['balance']<=0.005) unset($active[$targetId]); else $active[$targetId]=$working[$targetId];
+        }
+        foreach ($working as $id=>$card) if ($card['balance']<=0.005) unset($working[$id]);
+        $endingBalance=round(array_sum(array_column($working,'balance')),2);
+        $schedule[]=['month'=>$month,'date'=>$startDate->modify('+'.$month.' months')->format('M Y'),'payment'=>round($monthPaid,2),'interest'=>round($monthInterest,2),'balance'=>$endingBalance];
+        $totalInterest+=$monthInterest; $totalPaid+=$monthPaid;
+        if ($monthPaid <= $monthInterest+0.005 && $endingBalance>0) return ['error'=>'This payment amount does not reduce the balance after interest. Increase the monthly payoff budget.','schedule'=>$schedule,'minimum_total'=>round($minimumTotal,2)];
+    }
+    if ($working!==[]) return ['error'=>'The payoff extends beyond 50 years. Increase the monthly payoff budget.','schedule'=>$schedule,'minimum_total'=>round($minimumTotal,2)];
+    return ['error'=>'','months'=>$month,'interest'=>round($totalInterest,2),'paid'=>round($totalPaid,2),'schedule'=>$schedule,'minimum_total'=>round($minimumTotal,2),'payoff_date'=>$startDate->modify('+'.$month.' months')->format('F Y')];
+}
+
 function creditCardAccounts(array $accounts): array
 {
     return array_values(array_filter($accounts, function (array $account): bool {
@@ -1960,14 +1998,15 @@ $moneyPage = (string)($_GET['page'] ?? 'dashboard');
 if ($moneyPage === 'settings') {
     $moneyPage = 'payment';
 }
-if (!in_array($moneyPage, ['dashboard', 'daily', 'payment', 'accounts', 'budget'], true)) {
+if (!in_array($moneyPage, ['dashboard', 'daily', 'payment', 'payoff', 'accounts', 'budget'], true)) {
     $moneyPage = 'dashboard';
 }
 $isDailyCheckInView = $moneyPage === 'daily' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
 $isPaymentPlanView = $moneyPage === 'payment' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
+$isPayoffView = $moneyPage === 'payoff' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
 $isAccountsView = $moneyPage === 'accounts' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
 $isBudgetView = $moneyPage === 'budget' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
-$isMoneyDashboardView = !$isCreditCardView && !$isIncomeView && !$isBillsView && !$isDailyCheckInView && !$isPaymentPlanView && !$isAccountsView && !$isBudgetView;
+$isMoneyDashboardView = !$isCreditCardView && !$isIncomeView && !$isBillsView && !$isDailyCheckInView && !$isPaymentPlanView && !$isPayoffView && !$isAccountsView && !$isBudgetView;
 $pageTitle = 'Money Kata';
 $pageSubtitle = 'Watch the full money picture from your latest tally.';
 if ($isCreditCardView) {
@@ -1988,6 +2027,9 @@ if ($isCreditCardView) {
 } elseif ($isPaymentPlanView) {
     $pageTitle = 'Payment Plan';
     $pageSubtitle = 'Plan card and debt payments against your liquidity runway.';
+} elseif ($isPayoffView) {
+    $pageTitle = 'Card Payoff';
+    $pageSubtitle = 'Compare payoff strategies using your latest saved card balances.';
 } elseif ($isAccountsView) {
     $pageTitle = 'Accounts';
     $pageSubtitle = 'Manage accounts, availability, and credit card status.';
@@ -3313,6 +3355,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                     <a class="<?= !$isCreditCardView && !$isIncomeView && !$isBillsView && $moneyPage === 'dashboard' ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>">Dashboard</a>
                     <a class="<?= $isDailyCheckInView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=daily">Daily Check-In</a>
                     <a class="<?= $isPaymentPlanView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=payment">Payment Plan</a>
+                    <a class="<?= $isPayoffView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=payoff">Payoff</a>
                     <a class="<?= $isAccountsView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=accounts">Accounts</a>
                     <a class="<?= $isBillsView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;bills=1">Bills</a>
                     <a class="<?= $isIncomeView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;income=1">Income</a>
@@ -4282,6 +4325,59 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                         </div>
                     <?php endforeach; ?>
                 </div>
+            <?php endif; ?>
+        </section>
+
+        <?php elseif ($isPayoffView): ?>
+        <?php
+            $payoffCards = creditCardAccounts(activeAccounts($data['accounts']));
+            $payoffEntryKey = latestEntryDate($data['entries']);
+            $payoffEntry = $payoffEntryKey !== '' ? ($data['entries'][$payoffEntryKey] ?? ['balances' => []]) : ['balances' => []];
+            $payoffCardsWithBalances = array_values(array_filter($payoffCards, static function (array $card) use ($payoffEntry): bool {
+                $id = (string)($card['id'] ?? '');
+                return array_key_exists($id, $payoffEntry['balances'] ?? []) && abs((float)$payoffEntry['balances'][$id]) > 0.005;
+            }));
+            $savedPaymentTotal = array_sum(array_map(static function (array $card): float {
+                $intended = (float)($card['intended_payment'] ?? 0.0);
+                return $intended > 0 ? $intended : (float)($card['minimum_payment'] ?? 0.0);
+            }, $payoffCardsWithBalances));
+            $payoffStrategy = (string)($_GET['strategy'] ?? 'avalanche');
+            if (!in_array($payoffStrategy, ['avalanche', 'snowball'], true)) $payoffStrategy = 'avalanche';
+            $payoffBudgetRaw = trim((string)($_GET['payoff_budget'] ?? ''));
+            $payoffBudget = $payoffBudgetRaw === '' ? round($savedPaymentTotal, 2) : (parseMoneyAmount($payoffBudgetRaw) ?? 0.0);
+            $payoffResult = calculateCreditCardPayoff($payoffCardsWithBalances, $payoffEntry, $payoffBudget, $payoffStrategy, $now);
+        ?>
+        <section class="panel" aria-labelledby="payoff-title">
+            <h2 class="stage-title" id="payoff-title">Credit Card Payoff Calculator</h2>
+            <p class="subtitle">Uses balances from <?= $payoffEntryKey !== '' ? htmlspecialchars(formatDateHeader($payoffEntryKey), ENT_QUOTES, 'UTF-8') : 'your latest tally' ?>. APRs and minimums come from each card's saved details.</p>
+            <?php if ($payoffCardsWithBalances === []): ?>
+                <p class="empty">No active credit cards currently have a saved balance. Add or update today's tally first.</p>
+            <?php else: ?>
+                <form class="entry" method="get" action="finance.php">
+                    <input type="hidden" name="finance_scope" value="<?= htmlspecialchars($financeScope, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="page" value="payoff">
+                    <label>Monthly payoff budget<input type="number" name="payoff_budget" min="0" step="0.01" inputmode="decimal" value="<?= htmlspecialchars(number_format($payoffBudget, 2, '.', ''), ENT_QUOTES, 'UTF-8') ?>"></label>
+                    <label>Strategy<select name="strategy"><option value="avalanche" <?= $payoffStrategy === 'avalanche' ? 'selected' : '' ?>>Avalanche — highest APR first</option><option value="snowball" <?= $payoffStrategy === 'snowball' ? 'selected' : '' ?>>Snowball — lowest balance first</option></select></label>
+                    <button type="submit">Calculate Payoff</button>
+                </form>
+                <div class="table-wrap" style="margin-top:18px"><table><thead><tr><th>Card</th><th>Balance</th><th>APR</th><th>Minimum</th></tr></thead><tbody>
+                <?php foreach ($payoffCardsWithBalances as $card): $cardBalance=abs((float)($payoffEntry['balances'][(string)$card['id']] ?? 0)); ?>
+                    <tr><td><?= htmlspecialchars((string)$card['name'], ENT_QUOTES, 'UTF-8') ?></td><td><?= formatMoney($cardBalance) ?></td><td><?= $card['apr'] === null ? '—' : htmlspecialchars(number_format((float)$card['apr'], 2).'%', ENT_QUOTES, 'UTF-8') ?></td><td><?= formatMoney((float)$card['minimum_payment']) ?></td></tr>
+                <?php endforeach; ?>
+                </tbody></table></div>
+                <?php if (($payoffResult['error'] ?? '') !== ''): ?>
+                    <p class="notice"><?= htmlspecialchars((string)$payoffResult['error'], ENT_QUOTES, 'UTF-8') ?></p>
+                <?php else: ?>
+                    <div class="summary-grid" style="margin-top:18px">
+                        <div class="summary-card"><span>Debt-free</span><strong><?= htmlspecialchars((string)$payoffResult['payoff_date'], ENT_QUOTES, 'UTF-8') ?></strong></div>
+                        <div class="summary-card"><span>Months</span><strong><?= (int)$payoffResult['months'] ?></strong></div>
+                        <div class="summary-card"><span>Total interest</span><strong><?= formatMoney((float)$payoffResult['interest']) ?></strong></div>
+                        <div class="summary-card"><span>Total paid</span><strong><?= formatMoney((float)$payoffResult['paid']) ?></strong></div>
+                    </div>
+                    <details style="margin-top:18px"><summary><strong>Month-by-month schedule</strong></summary><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Month</th><th>Payment</th><th>Interest</th><th>Ending balance</th></tr></thead><tbody>
+                    <?php foreach ($payoffResult['schedule'] as $row): ?><tr><td><?= htmlspecialchars((string)$row['date'], ENT_QUOTES, 'UTF-8') ?></td><td><?= formatMoney((float)$row['payment']) ?></td><td><?= formatMoney((float)$row['interest']) ?></td><td><?= formatMoney((float)$row['balance']) ?></td></tr><?php endforeach; ?>
+                    </tbody></table></div></details>
+                <?php endif; ?>
             <?php endif; ?>
         </section>
 
