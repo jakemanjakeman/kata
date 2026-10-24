@@ -33,6 +33,7 @@ function billCategoryOptions(): array
         'utilities' => 'Utilities',
         'shopping' => 'Shopping',
         'dining_out' => 'Dining out',
+        'vacations' => 'Travel/Vacation',
         'groceries' => 'Groceries',
         'streaming_services' => 'Streaming services',
         'gas' => 'Gas',
@@ -63,7 +64,6 @@ function budgetCategoryOptions(?array $config = null): array
     return billCategoryOptions() + [
         'holidays' => 'Holidays',
         'birthdays' => 'Birthdays',
-        'vacations' => 'Vacations',
         'home_repairs' => 'Home repairs',
         'medical' => 'Medical',
         'savings' => 'Savings',
