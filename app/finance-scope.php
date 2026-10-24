@@ -28,6 +28,12 @@ function filterFinanceScope(array $data, string $scope): array
 // and all historical balances, including balances for dropped accounts.
 function mergeFinanceScope(array $full, array $visible, string $scope): array
 {
+    if (isset($visible['budget_config'][$scope])) {
+        $full['budget_config'][$scope] = $visible['budget_config'][$scope];
+    }
+    if (isset($visible['budgets'][$scope])) {
+        $full['budgets'][$scope] = $visible['budgets'][$scope];
+    }
     $ids = array_fill_keys(array_column(filterFinanceScope($full, $scope)['accounts'], 'id'), true);
     foreach (['accounts', 'bills', 'incomes'] as $collection) {
         $other = array_values(array_filter($full[$collection], static function (array $record) use ($scope): bool {
