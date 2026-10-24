@@ -21,3 +21,4 @@ desktop.ini
 *.log
 *.tmp
 *.bak
+expenses-audits.json.lock

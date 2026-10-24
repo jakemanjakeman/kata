@@ -1095,6 +1095,7 @@ if ($isAuthenticated) {
 }
 
 $focusError = $isAuthenticated ? kataHandleMainFocusSave() : '';
+require __DIR__ . '/app/expenses-audit-controller.php';
 if ($focusError !== '') {
     $error = $focusError;
 }
@@ -1812,13 +1813,14 @@ $moneyPage = (string)($_GET['page'] ?? 'dashboard');
 if ($moneyPage === 'settings') {
     $moneyPage = 'payment';
 }
-if (!in_array($moneyPage, ['dashboard', 'daily', 'payment', 'accounts'], true)) {
+if (!in_array($moneyPage, ['dashboard', 'daily', 'payment', 'accounts', 'audit'], true)) {
     $moneyPage = 'dashboard';
 }
 $isDailyCheckInView = $moneyPage === 'daily' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
 $isPaymentPlanView = $moneyPage === 'payment' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
 $isAccountsView = $moneyPage === 'accounts' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
-$isMoneyDashboardView = !$isCreditCardView && !$isIncomeView && !$isBillsView && !$isDailyCheckInView && !$isPaymentPlanView && !$isAccountsView;
+$isAuditView = $moneyPage === 'audit' && !$isCreditCardView && !$isIncomeView && !$isBillsView;
+$isMoneyDashboardView = !$isCreditCardView && !$isIncomeView && !$isBillsView && !$isDailyCheckInView && !$isPaymentPlanView && !$isAccountsView && !$isAuditView;
 $pageTitle = 'Money Kata';
 $pageSubtitle = 'Watch the full money picture from your latest tally.';
 if ($isCreditCardView) {
@@ -1836,6 +1838,9 @@ if ($isCreditCardView) {
 } elseif ($isPaymentPlanView) {
     $pageTitle = 'Payment Plan';
     $pageSubtitle = 'Plan card and debt payments against your liquidity runway.';
+} elseif ($isAuditView) {
+    $pageTitle = 'Expenses Audit';
+    $pageSubtitle = 'Review a month of actual income and expenses.';
 } elseif ($isAccountsView) {
     $pageTitle = 'Accounts';
     $pageSubtitle = 'Manage accounts, availability, and credit card status.';
@@ -3114,6 +3119,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
                     <a class="<?= $isDailyCheckInView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=daily">Daily Check-In</a>
                     <a class="<?= $isPaymentPlanView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=payment">Payment Plan</a>
                     <a class="<?= $isAccountsView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=accounts">Accounts</a>
+                    <a class="<?= $isAuditView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;page=audit">Expenses Audit</a>
                     <a class="<?= $isBillsView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;bills=1">Bills</a>
                     <a class="<?= $isIncomeView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;income=1">Income</a>
                     <a class="<?= $isCreditCardView ? 'is-selected' : '' ?>" href="finance.php?finance_scope=<?= $financeScope ?>&amp;cards=1">Credit Cards</a>
@@ -3128,7 +3134,7 @@ foreach ($creditCardAccounts as $creditCardAccount) {
         <nav class="toggle-pills" aria-label="Finance view" style="margin-bottom: 24px">
             <?php foreach (['personal' => 'Personal', 'business' => 'Business'] as $scopeValue => $scopeLabel): ?>
                 <?php
-                    $scopeQuery = array_intersect_key($_GET, array_flip(['page', 'cards', 'bills', 'income', 'cc_range', 'range']));
+                    $scopeQuery = array_intersect_key($_GET, array_flip(['page', 'month', 'cards', 'bills', 'income', 'cc_range', 'range']));
                     if (isset($_GET['account'])) { $scopeQuery['cards'] = '1'; }
                     $scopeQuery['finance_scope'] = $scopeValue;
                 ?>
@@ -3137,7 +3143,9 @@ foreach ($creditCardAccounts as $creditCardAccount) {
         </nav>
         <?php if (($_GET['moved'] ?? '') === '1'): ?><p class="notice" role="status">Moved to the other view. Switch views to find it there.</p><?php endif; ?>
 
-        <?php if ($isCreditCardView): ?>
+        <?php if ($isAuditView): ?>
+            <?php require __DIR__ . '/app/expenses-audit-view.php'; ?>
+        <?php elseif ($isCreditCardView): ?>
             <p class="detail-nav"><a href="finance.php?finance_scope=<?= $financeScope ?>">Back to Money Kata</a></p>
 
             <?php if ($detailAccountId !== ''): ?>
