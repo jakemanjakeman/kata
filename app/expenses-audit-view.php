@@ -31,7 +31,7 @@ $auditCategories = billCategoryOptions();
 <?php if ($auditEditing): ?>
 <section class="panel">
 <h2 class="stage-title"><?= $audit ? 'Edit' : 'New' ?> audit &middot; <?= $auditEscape(date('F Y', strtotime($auditMonth . '-01'))) ?></h2>
-<p class="subtitle">Enter actual income and expenses for this month. Audit items are kept separately from your balances and recurring bills.</p>
+<p class="subtitle">Enter a description and amount, then select an account and category. Use + Expense or + Income to add more items.</p>
 <?php if ($auditAccounts === []): ?><p>Add an account on the <a href="<?= $auditEscape(financeScopeUrl('finance.php?page=accounts')) ?>">Accounts page</a> to record items.</p><?php endif; ?>
 <form method="post" action="<?= $auditEscape($auditUrl) ?>" id="audit-form">
 <input type="hidden" name="action" value="save_audit"><input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
@@ -62,6 +62,7 @@ $auditCategories = billCategoryOptions();
     }
     const rows = <?= json_encode($auditRows, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     rows.forEach(row => add(row));
+    if (rows.length === 0) { add({type: 'expense'}); }
     document.getElementById('audit-add-expense').onclick = () => add({type:'expense'}, true);
     document.getElementById('audit-add-income').onclick = () => add({type:'income'}, true);
     document.getElementById('audit-form').addEventListener('input', () => { dirty = true; });
