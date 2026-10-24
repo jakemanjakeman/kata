@@ -12,11 +12,12 @@ $auditCategories = billCategoryOptions();
 .audit-toolbar label,.audit-item label { position:static; width:auto; height:auto; overflow:visible; clip:auto; display:block; font-size:.85rem; }
 .audit-toolbar label { margin-bottom:8px; }
 .audit-items { display:grid; gap:12px; margin:20px 0; }
-.audit-item { display:grid; grid-template-columns:110px minmax(150px,2fr) 120px minmax(130px,1fr) minmax(130px,1fr) auto; gap:10px; align-items:end; border-bottom:1px solid var(--line); padding-bottom:16px; }
+.audit-item { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; align-items:end; border-bottom:1px solid var(--line); padding-bottom:16px; }
 .audit-item input,.audit-item select,#audit-month { width:100%; min-width:0; min-height:48px; border:1px solid var(--line); border-radius:6px; padding:0 14px; background:var(--panel); color:var(--ink); font:inherit; outline:none; }
 .audit-item input,.audit-item select { margin-top:8px; }
 .audit-item input:focus,.audit-item select:focus,#audit-month:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--focus-ring); }
 @media(max-width:900px) { .audit-item { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:480px) { .audit-item { grid-template-columns:minmax(0,1fr); } }
 @media print { .primary-nav,.global-focus,.toggle-pills,.audit-toolbar,.audit-history,[data-theme-toggle] { display:none!important; } .app-shell { max-width:none; padding:0; } .panel { break-inside:avoid; } }
 </style>
 <?php if (!$isAuthenticated): ?>
@@ -44,6 +45,7 @@ $auditCategories = billCategoryOptions();
 </form>
 <template id="audit-item-template"><div class="audit-item">
 <label>Type<select data-field="type"><option value="expense">Expense</option><option value="income">Income</option></select></label>
+<label>Date (optional)<input data-field="date" type="date" min="<?= $auditEscape($auditMonth . '-01') ?>" max="<?= $auditEscape(date('Y-m-t', strtotime($auditMonth . '-01'))) ?>"></label>
 <label>Description<input data-field="name" maxlength="240" placeholder="e.g. Grocery trip" required></label>
 <label>Amount ($)<input data-field="amount" type="number" min="0.01" max="999999999.99" step="0.01" inputmode="decimal" required></label>
 <label>Account<select data-field="account_id" required><option value="">Select account</option><?php foreach ($auditAccounts as $id => $name): ?><option value="<?= $auditEscape($id) ?>"><?= $auditEscape($name) ?></option><?php endforeach; ?></select></label>
@@ -84,8 +86,8 @@ $auditCategories = billCategoryOptions();
 <h3>By <?= strtolower($label) ?></h3><div class="table-wrap"><table class="bill-table"><thead><tr><th><?= $label ?></th><th>Income</th><th>Expenses</th><th>Net</th></tr></thead><tbody>
 <?php foreach ($report[$group] as $id => $totals): ?><tr><td><?= $auditEscape($group === 'categories' ? ($auditCategories[$id] ?? $id) : ($auditAccounts[$id] ?? $id)) ?></td><td><?= formatMoney($totals['income'] / 100) ?></td><td><?= formatMoney($totals['expense'] / 100) ?></td><td><?= formatMoney(($totals['income'] - $totals['expense']) / 100) ?></td></tr><?php endforeach; ?>
 </tbody></table></div><?php endforeach; ?>
-<h3>All items</h3><div class="table-wrap"><table class="bill-table"><thead><tr><th>Description</th><th>Type</th><th>Account</th><th>Category</th><th>Amount</th></tr></thead><tbody>
-<?php foreach ($audit['items'] as $item): ?><tr><td><?= $auditEscape($item['name']) ?></td><td><?= ucfirst($item['type']) ?></td><td><?= $auditEscape($auditAccounts[$item['account_id']] ?? $item['account_name']) ?></td><td><?= $auditEscape($auditCategories[$item['category']] ?? $item['category']) ?></td><td><?= formatMoney($item['amount_cents'] / 100) ?></td></tr><?php endforeach; ?>
+<h3>All items</h3><div class="table-wrap"><table class="bill-table"><thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Account</th><th>Category</th><th>Amount</th></tr></thead><tbody>
+<?php foreach ($audit['items'] as $item): ?><tr><td><?= $auditEscape(($item['date'] ?? '') !== '' ? $item['date'] : 'Not recorded') ?></td><td><?= $auditEscape($item['name']) ?></td><td><?= ucfirst($item['type']) ?></td><td><?= $auditEscape($auditAccounts[$item['account_id']] ?? $item['account_name']) ?></td><td><?= $auditEscape($auditCategories[$item['category']] ?? $item['category']) ?></td><td><?= formatMoney($item['amount_cents'] / 100) ?></td></tr><?php endforeach; ?>
 </tbody></table></div><?php endif; ?>
 </section>
 <?php endif; ?>

@@ -26,7 +26,7 @@ if ($isAuthenticated && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action
         if ($auditError !== '') { throw new RuntimeException($auditError); }
         if (!hash_equals($_SESSION['audit_csrf'], (string)($_POST['audit_csrf'] ?? ''))) { throw new RuntimeException('Your session changed. Reload the page before saving.'); }
         if (($_POST['audit_complete'] ?? '') !== '1') { throw new RuntimeException('The submitted audit was incomplete. Reduce the number of items and try again.'); }
-        $items = validateAuditItems($auditRows, $data['accounts'], billCategoryOptions(), $audit['items'] ?? []);
+        $items = validateAuditItems($auditRows, $data['accounts'], billCategoryOptions(), $audit['items'] ?? [], $auditMonth);
         saveExpensesAudit($auditPath, $financeScope, $auditMonth, $items, $auditRevision);
         header('Location: ' . financeScopeUrl('finance.php?page=audit&month=' . rawurlencode($auditMonth) . '&saved=1'));
         exit;

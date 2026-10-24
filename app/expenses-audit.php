@@ -15,7 +15,7 @@ function loadExpensesAudits(string $path): array
     return $decoded;
 }
 
-function validateAuditItems(array $rows, array $accounts, array $categories, array $previous = []): array
+function validateAuditItems(array $rows, array $accounts, array $categories, array $previous = [], string $month = ''): array
 {
     if (count($rows) > 1000) { throw new RuntimeException('Keep each audit to 1,000 items or fewer.'); }
     $accountNames = array_column($accounts, 'name', 'id');
@@ -32,13 +32,20 @@ function validateAuditItems(array $rows, array $accounts, array $categories, arr
         $type = (string)($row['type'] ?? 'expense');
         $account = (string)($row['account_id'] ?? '');
         $category = (string)($row['category'] ?? 'uncategorized');
-        if ($name === '' && $amount === '' && $account === '' && $category === 'uncategorized') { continue; }
+        $date = trim((string)($row['date'] ?? ''));
+        if ($name === '' && $amount === '' && $account === '' && $category === 'uncategorized' && $date === '') { continue; }
+        if ($date !== '') {
+            $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+            if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date || ($month !== '' && $parsedDate->format('Y-m') !== $month)) {
+                throw new RuntimeException('Choose a valid item date within the month being audited.');
+            }
+        }
         if ($name === '' || strlen($name) > 240 || !in_array($type, ['income', 'expense'], true)
             || !preg_match('/^[0-9]{1,9}(\.[0-9]{1,2})?$/D', $amount) || (float)$amount <= 0
             || !isset($accountNames[$account]) || !isset($categories[$category])) {
             throw new RuntimeException('Each item needs a description (up to 240 characters), income or expense type, a positive amount with at most two decimal places, an account, and a category.');
         }
-        $items[] = ['name' => $name, 'type' => $type, 'amount_cents' => (int)round((float)$amount * 100),
+        $items[] = ['name' => $name, 'date' => $date, 'type' => $type, 'amount_cents' => (int)round((float)$amount * 100),
             'account_id' => $account, 'account_name' => $accountNames[$account], 'category' => $category];
     }
     return $items;
