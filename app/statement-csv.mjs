@@ -77,12 +77,12 @@ export function parseStatementCsv(text, month, mode = 'bank') {
         const amount = csvAmount(rawAmount);
         if (!amount || amount.cents === 0) { skip('Missing, invalid, or zero amount.'); continue; }
         const date = csvDate(rawDate);
+        if (date && !date.startsWith(month + '-')) { skip(`Outside audit month ${month} (${date}).`); continue; }
         const type = venmo || mode === 'bank' ? (amount.negative ? 'expense':'income') : (amount.negative ? 'income':'expense');
         const party = type === 'expense' ? get('to') : get('from');
         const name = venmo ? [get('note'), party ? `${type === 'expense' ? 'To' : 'From'} ${party}` : ''].filter(Boolean).join(' - ') || transactionType || 'Venmo transaction' : get('description');
         const notes = [];
         if (!date) notes.push('Date could not be read; enter it manually.');
-        else if (!date.startsWith(month + '-')) notes.push('Outside the audit month; exclude or correct this date.');
         if (venmo) {
             notes.push('Venmo: negative is sent, positive is received. Check reimbursements and refunds before treating them as income.');
             if (!status) notes.push('No transaction status supplied; verify that this transaction completed.');

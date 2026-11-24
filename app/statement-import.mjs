@@ -133,11 +133,11 @@ parseButton.addEventListener('click', async () => {
             if (parsed.rows.length > 1000) throw new Error('More than 1,000 candidate items were found. Split the statement into smaller PDFs.');
             previewAccount = account;
             renderRows(parsed.rows);
-            byId('statement-text').textContent = parsed.skipped.map(line => `Needs review, page ${line.page}: ${line.text} (${line.reason})`).join('\n') + '\n\n' + lines.map(line => `Page ${line.page}: ${line.text}`).join('\n');
+            byId('statement-text').textContent = parsed.skipped.map(line => `Skipped, page ${line.page}: ${line.text} (${line.reason})`).join('\n') + '\n\n' + lines.map(line => `Page ${line.page}: ${line.text}`).join('\n');
             byId('statement-source').hidden = lines.length === 0;
             status.textContent = parsed.rows.length
-                ? `${parsed.rows.length} candidate items found for ${byId('statement-account').selectedOptions[0].textContent}. ${parsed.skipped.length} dated lines could not be parsed. Review against your PDF; this is not a complete or reconciled statement. Nothing has been saved.`
-                : 'No transaction rows could be read. Scanned PDFs need OCR first; other layouts may need manual entry. Check extracted text below if available.';
+                ? `${parsed.rows.length} candidate items found for ${byId('statement-account').selectedOptions[0].textContent}. ${parsed.skipped.length} rows skipped (outside the audit month or unreadable amounts). Review against your PDF; this is not a complete or reconciled statement. Nothing has been saved.`
+                : parsed.skipped.length ? `No items to add for ${config.month}. ${parsed.skipped.length} rows skipped; see the reasons below.` : 'No transaction rows could be read. Scanned PDFs need OCR first; other layouts may need manual entry. Check extracted text below if available.';
         } finally { clearTimeout(timeout); }
     } catch (error) {
         status.textContent = error.name === 'PasswordException' ? 'This PDF is password-protected. Choose an unlocked copy.' : `Could not preview the statement: ${error.message || 'Please try a smaller PDF or CSV.'}`;

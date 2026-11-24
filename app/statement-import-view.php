@@ -14,6 +14,7 @@ $importMaxRows = $importMaxVars > 0 ? max(1, min(1000, (int)floor(($importMaxVar
     <p>Separate debit/credit columns are used when detected. Check amounts, dates, and transaction types, especially payments, transfers, and refunds. Scanned or password-protected PDFs need an unlocked, text-based copy.</p>
     <p>Venmo CSVs use Amount (total), with money sent as expenses and money received as income for review. Bank transfers and incomplete payments are skipped. Other CSVs need Date, Description, and Amount columns; choose their amount format above.</p>
     <p id="statement-status" role="status" aria-live="polite"></p>
+    <p>Transactions dated outside <?= $auditEscape($auditMonth) ?> are automatically skipped. You can find them under Statement source / skipped rows. Unreadable dates remain in the preview for correction.</p>
     <div id="statement-review" hidden>
         <p>Items start selected. Review the source line and fields, uncheck items to leave them out, or use &times; to remove them from the preview. Categories default to Uncategorized.</p>
         <div id="statement-rows"></div>

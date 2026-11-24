@@ -69,6 +69,10 @@ export function parseStatement(lines, month, mode = 'card') {
         }
         const notes = [];
         const parsed = parseDate(first[0], month);
+        if (parsed.date && !parsed.date.startsWith(month + '-')) {
+            skipped.push({...line, reason: `Outside audit month ${month} (${parsed.date}).`});
+            continue;
+        }
         let rest = line.text.slice(first[0].length).trim();
         const posting = rest.match(dateStart);
         if (posting) { rest = rest.slice(posting[0].length).trim(); notes.push('Two dates found; using the first.'); }
@@ -102,7 +106,6 @@ export function parseStatement(lines, month, mode = 'card') {
         if (!description) notes.push('Description needs review.');
         if (!parsed.date) notes.push('Date could not be read; enter it manually.');
         if (parsed.inferred) notes.push('Year inferred from the audit month.');
-        if (parsed.date && !parsed.date.startsWith(month + '-')) notes.push('Outside the audit month; exclude or correct this date.');
         if (/payment|transfer|refund|reversal/i.test(description) || signedCredit) notes.push('Possible payment, transfer, or refund: check whether this belongs in income/expenses.');
         rows.push({date:parsed.date, name:description, amount, type, category:'uncategorized', source:line.text, page:line.page, notes});
     }
