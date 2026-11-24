@@ -51,8 +51,24 @@ function renderRows(rows) {
         const card = element('div', '', 'statement-row');
         const label = element('label', '', 'statement-select');
         const check = document.createElement('input'); check.type = 'checkbox'; check.dataset.include = '1';
+        check.checked = true;
         label.append(check, document.createTextNode(`Include item ${index + 1} (${row.sourceLabel || 'page ' + row.page})`));
-        card.append(label);
+        const heading = element('div', '', 'statement-row-heading');
+        const remove = element('button', '\u00d7', 'secondary-button statement-remove');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', `Remove item ${index + 1} from preview`);
+        remove.title = 'Remove from preview';
+        remove.addEventListener('click', () => {
+            const next = card.nextElementSibling || card.previousElementSibling;
+            card.remove();
+            pendingReview = container.children.length > 0;
+            review.hidden = !pendingReview;
+            status.textContent = pendingReview
+                ? `Item removed from preview. ${container.children.length} items remain. Nothing has been saved.`
+                : 'All items removed from preview. Audit items are unchanged.';
+            (next ? next.querySelector('.statement-remove') : parseButton).focus();
+        });
+        heading.append(label, remove); card.append(heading);
         card.append(element('p', row.source, 'statement-source-line'));
         const notes = row.notes.slice();
         const key = rowKey({...row, account_id:previewAccount});
