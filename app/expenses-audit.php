@@ -51,9 +51,23 @@ function validateAuditItems(array $rows, array $accounts, array $categories, arr
     return $items;
 }
 
-function saveExpensesAudit(string $path, string $scope, string $month, array $items, string $revision): void
+function auditItemsForMonth(array $items, string $month): array
 {
-    if (!in_array($scope, ['personal', 'business'], true) || !auditMonthValid($month)) {
+    if (!auditMonthValid($month)) { throw new RuntimeException('Choose a valid audit month.'); }
+    $lastDay = (int)(new DateTimeImmutable($month . '-01'))->format('t');
+    foreach ($items as &$item) {
+        if (($item['date'] ?? '') !== '') {
+            $day = min((int)substr($item['date'], 8, 2), $lastDay);
+            $item['date'] = $month . '-' . sprintf('%02d', $day);
+        }
+    }
+    unset($item);
+    return $items;
+}
+
+function saveExpensesAudit(string $path, string $scope, string $month, array $items, string $revision, ?string $sourceMonth = null): void
+{
+    if (!in_array($scope, ['personal', 'business'], true) || !auditMonthValid($month) || ($sourceMonth !== null && !auditMonthValid($sourceMonth))) {
         throw new RuntimeException('Choose a valid audit month.');
     }
     $lock = fopen($path . '.lock', 'c');
@@ -62,9 +76,19 @@ function saveExpensesAudit(string $path, string $scope, string $month, array $it
     try {
         if (!flock($lock, LOCK_EX)) { throw new RuntimeException('Could not lock audits for saving.'); }
         $all = loadExpensesAudits($path);
-        $old = $all[$scope][$month] ?? [];
+        $old = $all[$scope][$sourceMonth ?? $month] ?? [];
+        if ($sourceMonth !== null && $old === []) {
+            throw new RuntimeException('The original audit no longer exists. Open its latest report and try again.');
+        }
         if (($old['revision'] ?? '') !== $revision) {
             throw new RuntimeException('This month was saved in another tab. Open its latest report before editing again. Your submitted items remain below.');
+        }
+        if ($sourceMonth !== null) {
+            if ($sourceMonth !== $month && isset($all[$scope][$month])) {
+                throw new RuntimeException('An audit already exists for that month. Choose another month; neither audit has been changed.');
+            }
+            $items = auditItemsForMonth($old['items'], $month);
+            unset($all[$scope][$sourceMonth]);
         }
         $all[$scope][$month] = ['items' => $items, 'revision' => bin2hex(random_bytes(16)),
             'created_at' => $old['created_at'] ?? date(DATE_ATOM), 'updated_at' => date(DATE_ATOM)];

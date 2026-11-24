@@ -13,9 +13,9 @@ $auditCategories = billCategoryOptions();
 .audit-toolbar label { margin-bottom:8px; }
 .audit-items { display:grid; gap:12px; margin:20px 0; }
 .audit-item { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; align-items:end; border-bottom:1px solid var(--line); padding-bottom:16px; }
-.audit-item input,.audit-item select,#audit-month { width:100%; min-width:0; min-height:48px; border:1px solid var(--line); border-radius:6px; padding:0 14px; background:var(--panel); color:var(--ink); font:inherit; outline:none; }
+.audit-item input,.audit-item select,.audit-toolbar input[type="month"] { width:100%; min-width:0; min-height:48px; border:1px solid var(--line); border-radius:6px; padding:0 14px; background:var(--panel); color:var(--ink); font:inherit; outline:none; }
 .audit-item input,.audit-item select { margin-top:8px; }
-.audit-item input:focus,.audit-item select:focus,#audit-month:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--focus-ring); }
+.audit-item input:focus,.audit-item select:focus,.audit-toolbar input[type="month"]:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--focus-ring); }
 @media(max-width:900px) { .audit-item { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:480px) { .audit-item { grid-template-columns:minmax(0,1fr); } }
 @media print { .primary-nav,.global-focus,.toggle-pills,.audit-toolbar,.audit-history,[data-theme-toggle] { display:none!important; } .app-shell { max-width:none; padding:0; } .panel { break-inside:avoid; } }
@@ -36,6 +36,7 @@ $auditCategories = billCategoryOptions();
 <h2 class="stage-title"><?= $audit ? 'Edit' : 'New' ?> audit &middot; <?= $auditEscape(date('F Y', strtotime($auditMonth . '-01'))) ?></h2>
 <p class="subtitle">Enter a description and amount, then select an account and category. Use + Expense or + Income to add more items.</p>
 <?php if ($auditAccounts === []): ?><p>Add an account on the <a href="<?= $auditEscape(financeScopeUrl('finance.php?page=accounts')) ?>">Accounts page</a> to record items.</p><?php endif; ?>
+<?php require __DIR__ . '/statement-import-view.php'; ?>
 <form method="post" action="<?= $auditEscape($auditUrl) ?>" id="audit-form">
 <input type="hidden" name="action" value="save_audit"><input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
 <input type="hidden" name="audit_month" value="<?= $auditEscape($auditMonth) ?>"><input type="hidden" name="audit_revision" value="<?= $auditEscape($auditRevision) ?>"><input type="hidden" name="audit_csrf" value="<?= $auditEscape($_SESSION['audit_csrf']) ?>">
@@ -69,6 +70,14 @@ $auditCategories = billCategoryOptions();
     if (rows.length === 0) { add({type: 'expense'}); }
     document.getElementById('audit-add-expense').onclick = () => add({type:'expense'}, true);
     document.getElementById('audit-add-income').onclick = () => add({type:'income'}, true);
+    document.getElementById('audit-form').addEventListener('audit-import', event => {
+        list.querySelectorAll('.audit-item').forEach(item => {
+            const hasValue = ['name', 'amount', 'account_id', 'date'].some(field => item.querySelector(`[data-field="${field}"]`).value !== '');
+            if (!hasValue) item.remove();
+        });
+        event.detail.forEach(row => add(row));
+        dirty = true;
+    });
     document.getElementById('audit-form').addEventListener('input', () => { dirty = true; });
     document.getElementById('audit-form').addEventListener('submit', () => { dirty = false; });
     window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
@@ -81,6 +90,13 @@ $auditCategories = billCategoryOptions();
 <p class="subtitle">Last saved <?= $auditEscape(date('M j, Y g:i a', strtotime($audit['updated_at']))) ?></p>
 <div class="summary-grid"><?php foreach (['income' => 'Total income', 'expense' => 'Total expenses', 'net' => 'Net income'] as $key => $label): ?><div class="metric"><span><?= $label ?></span><strong><?= $auditEscape(formatMoney($report[$key] / 100)) ?></strong></div><?php endforeach; ?></div>
 <div class="audit-toolbar"><a class="secondary-button" href="<?= $auditEscape($auditUrl . '&edit=1') ?>">Edit audit</a><button type="button" onclick="window.print()">Print / Save PDF</button></div>
+<form class="audit-toolbar" method="post" action="<?= $auditEscape($auditUrl) ?>">
+<input type="hidden" name="action" value="move_audit"><input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
+<input type="hidden" name="audit_month" value="<?= $auditEscape($auditMonth) ?>"><input type="hidden" name="audit_revision" value="<?= $auditEscape($auditRevision) ?>"><input type="hidden" name="audit_csrf" value="<?= $auditEscape($_SESSION['audit_csrf']) ?>">
+<div><label for="audit-target-month">Change audit month</label><input id="audit-target-month" type="month" name="target_month" value="<?= $auditEscape($auditMonth) ?>" aria-describedby="audit-move-help" required></div>
+<button type="submit">Move audit</button>
+<p id="audit-move-help">Moves this audit and its item dates to the selected month. Days stay the same where possible; dates past the end of the month use its last day. An existing audit will never be overwritten.</p>
+</form>
 <?php if ($audit['items'] === []): ?><p class="empty">No items recorded. Edit this audit to add income or expenses.</p><?php else: ?>
 <?php foreach (['categories' => 'Category', 'accounts' => 'Account'] as $group => $label): ?>
 <h3>By <?= strtolower($label) ?></h3><div class="table-wrap"><table class="bill-table"><thead><tr><th><?= $label ?></th><th>Income</th><th>Expenses</th><th>Net</th></tr></thead><tbody>

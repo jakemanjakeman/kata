@@ -18,6 +18,16 @@ foreach ($audit['items'] ?? [] as $item) {
     $auditRows[] = $item;
 }
 if (!isset($_SESSION['audit_csrf'])) { $_SESSION['audit_csrf'] = bin2hex(random_bytes(32)); }
+if ($isAuthenticated && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'move_audit') {
+    try {
+        if ($auditError !== '') { throw new RuntimeException($auditError); }
+        if (!hash_equals($_SESSION['audit_csrf'], (string)($_POST['audit_csrf'] ?? ''))) { throw new RuntimeException('Your session changed. Reload the page before saving.'); }
+        $targetMonth = (string)($_POST['target_month'] ?? '');
+        saveExpensesAudit($auditPath, $financeScope, $targetMonth, [], (string)($_POST['audit_revision'] ?? ''), $auditMonth);
+        header('Location: ' . financeScopeUrl('finance.php?page=audit&month=' . rawurlencode($targetMonth) . '&saved=1'));
+        exit;
+    } catch (RuntimeException $exception) { $auditError = $exception->getMessage(); }
+}
 if ($isAuthenticated && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_audit') {
     $auditEditing = true;
     $auditRows = is_array($_POST['items'] ?? null) ? array_values($_POST['items']) : [];
