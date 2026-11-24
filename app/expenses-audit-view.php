@@ -6,8 +6,21 @@ foreach ($audit['items'] ?? [] as $item) {
     if (!isset($auditAccounts[$item['account_id']])) { $auditAccounts[$item['account_id']] = $item['account_name'] . ' (previous account)'; }
 }
 $auditCategories = billCategoryOptions();
+$auditYear = (int)substr($auditMonth, 0, 4);
+$auditYears = range(max(1000, (int)date('Y') - 5), min(9999, (int)date('Y') + 1));
+$auditYears[] = $auditYear;
+foreach (array_keys($audits[$financeScope] ?? []) as $savedMonth) { $auditYears[] = (int)substr($savedMonth, 0, 4); }
+$auditYears = array_unique($auditYears); rsort($auditYears);
 ?>
 <style>
+main.app-shell.is-audit { width:calc(100% - 32px); max-width:none; }
+.audit-month-nav { display:grid; grid-template-columns:repeat(12,minmax(54px,1fr)); gap:8px; overflow-x:auto; padding:4px 0 12px; margin-bottom:16px; }
+.audit-month-nav a { display:flex; align-items:center; justify-content:center; min-height:48px; border:1px solid #cdd1d4; border-radius:8px; background:#eef0f2; color:#60676d; font-weight:800; text-decoration:none; }
+.audit-month-nav a.has-items { background:#dff3e5; border-color:#8bc59c; color:#205d35; }
+.audit-month-nav a[aria-current="page"] { outline:2px solid var(--ink); outline-offset:-4px; }
+.audit-month-nav a:hover,.audit-month-nav a:focus-visible { text-decoration:underline; }
+.night-mode .audit-month-nav a { background:#30363b; border-color:#58616a; color:#bac1c8; }
+.night-mode .audit-month-nav a.has-items { background:#19452c; border-color:#4b9968; color:#b9efca; }
 .audit-toolbar { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin:16px 0; }
 .audit-toolbar label,.audit-item label { position:static; width:auto; height:auto; overflow:visible; clip:auto; display:block; font-size:.85rem; }
 .audit-toolbar label { margin-bottom:8px; }
@@ -18,7 +31,7 @@ $auditCategories = billCategoryOptions();
 .audit-item input:focus,.audit-item select:focus,.audit-toolbar input[type="month"]:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--focus-ring); }
 @media(max-width:900px) { .audit-item { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:480px) { .audit-item { grid-template-columns:minmax(0,1fr); } }
-@media print { .primary-nav,.global-focus,.toggle-pills,.audit-toolbar,.audit-history,[data-theme-toggle] { display:none!important; } .app-shell { max-width:none; padding:0; } .panel { break-inside:avoid; } }
+@media print { .primary-nav,.global-focus,.toggle-pills,.audit-toolbar,.audit-month-nav,.audit-month-legend,[data-theme-toggle] { display:none!important; } .app-shell { max-width:none; padding:0; } .panel { break-inside:avoid; } }
 </style>
 <?php if (!$isAuthenticated): ?>
 <p class="empty">Unlock Money Kata to view your audits.</p>
@@ -26,9 +39,18 @@ $auditCategories = billCategoryOptions();
 <p class="subtitle">Audits are for review only. Adding, editing, or removing audit items does not change daily check-in records, account balances, recurring bills or income, or forecasts.</p>
 <form class="audit-toolbar" method="get">
     <input type="hidden" name="page" value="audit"><input type="hidden" name="finance_scope" value="<?= $financeScope ?>">
-    <div><label for="audit-month">Month to audit</label><input id="audit-month" type="month" name="month" value="<?= $auditEscape($auditMonth) ?>" required></div>
-    <button type="submit">Open month</button>
+    <div><label for="audit-year">Year</label><select id="audit-year" name="month"><?php foreach ($auditYears as $year): ?><option value="<?= $year . substr($auditMonth, 4) ?>" <?= $year === $auditYear ? 'selected' : '' ?>><?= $year ?></option><?php endforeach; ?></select></div>
+    <button type="submit">Open year</button>
+    <?php if ($auditYear > 1000): ?><a href="<?= $auditEscape(financeScopeUrl('finance.php?page=audit&month=' . ($auditYear - 1) . substr($auditMonth, 4))) ?>">&larr; <?= $auditYear - 1 ?></a><?php endif; ?>
+    <?php if ($auditYear < 9999): ?><a href="<?= $auditEscape(financeScopeUrl('finance.php?page=audit&month=' . ($auditYear + 1) . substr($auditMonth, 4))) ?>"><?= $auditYear + 1 ?> &rarr;</a><?php endif; ?>
 </form>
+<nav class="audit-month-nav" aria-label="<?= $auditYear ?> audit months">
+<?php foreach (['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] as $monthIndex => $monthLabel): ?>
+<?php $monthKey = sprintf('%04d-%02d', $auditYear, $monthIndex + 1); $hasItems = !empty($audits[$financeScope][$monthKey]['items']); $monthStatus = $hasItems ? 'Has audit items' : 'No audit items'; ?>
+<a class="<?= $hasItems ? 'has-items' : 'is-empty' ?>" href="<?= $auditEscape(financeScopeUrl('finance.php?page=audit&month=' . $monthKey)) ?>" title="<?= $monthLabel . ' ' . $auditYear . ': ' . $monthStatus ?>" aria-label="<?= $monthLabel . ' ' . $auditYear . ': ' . $monthStatus ?>" <?= $monthKey === $auditMonth ? 'aria-current="page"' : '' ?>><?= $monthLabel ?></a>
+<?php endforeach; ?>
+</nav>
+<p class="subtitle audit-month-legend">Green: saved audit with items. Grey: no items. Outlined: selected month.</p>
 <?php if ($auditError !== ''): ?><p class="error" role="alert"><?= $auditEscape($auditError) ?></p><?php endif; ?>
 <?php if (isset($_GET['saved']) && $auditError === ''): ?><p class="notice" role="status">Audit saved.</p><?php endif; ?>
 <?php if ($auditEditing): ?>
@@ -107,8 +129,4 @@ $auditCategories = billCategoryOptions();
 </tbody></table></div><?php endif; ?>
 </section>
 <?php endif; ?>
-<section class="panel audit-history"><h2 class="stage-title">Saved audits &middot; <?= ucfirst($financeScope) ?></h2>
-<?php $auditHistory = $audits[$financeScope] ?? []; krsort($auditHistory); ?>
-<?php if (!$auditHistory): ?><p class="empty">Your saved monthly audits will appear here.</p><?php else: ?><ul><?php foreach ($auditHistory as $month => $savedAudit): ?><li><a href="<?= $auditEscape(financeScopeUrl('finance.php?page=audit&month=' . rawurlencode($month))) ?>"><?= $auditEscape(date('F Y', strtotime($month . '-01'))) ?></a></li><?php endforeach; ?></ul><?php endif; ?>
-</section>
 <?php endif; ?>
