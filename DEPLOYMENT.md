@@ -37,6 +37,8 @@ The preview caps additions based on PHP's `max_input_vars` (six fields per item 
 
 Run `node tests/statement-parser.mjs` and the PHP tests for regression checks.
 
+CSV imports use `app/statement-csv.mjs` (no additional library). Venmo headers are detected after introductory rows, including exports with an empty first column. Quoted commas, quotes, multiline notes, and UTF-8 BOMs are supported. Completed payments use signed `Amount (total)`; bank/balance transfers and incomplete statuses are listed as skipped. Fees are flagged for review rather than added again. Other CSVs must contain Date (or Transaction Date), Description, and Amount columns, with US or ISO dates. The file stays in the browser and follows the same explicit review/save flow. Run `node tests/statement-csv.mjs` for CSV regression checks.
+
 ## Search Engines
 
 All pages send `X-Robots-Tag: noindex, nofollow` and include matching robots meta tags. Do not link the private subdomain from WordPress or add it to a sitemap.

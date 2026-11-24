@@ -1,4 +1,5 @@
 import {statementLines, parseStatement} from './statement-parser.mjs';
+import {parseStatementCsv} from './statement-csv.mjs';
 
 const byId = id => document.getElementById(id);
 const config = JSON.parse(byId('statement-config').textContent);
@@ -50,7 +51,7 @@ function renderRows(rows) {
         const card = element('div', '', 'statement-row');
         const label = element('label', '', 'statement-select');
         const check = document.createElement('input'); check.type = 'checkbox'; check.dataset.include = '1';
-        label.append(check, document.createTextNode(`Include item ${index + 1} (page ${row.page})`));
+        label.append(check, document.createTextNode(`Include item ${index + 1} (${row.sourceLabel || 'page ' + row.page})`));
         card.append(label);
         card.append(element('p', row.source, 'statement-source-line'));
         const notes = row.notes.slice();
@@ -74,8 +75,8 @@ parseButton.addEventListener('click', async () => {
     if (loading) return;
     const file = byId('statement-file').files[0];
     const account = byId('statement-account').value;
-    if (!file || !account) { status.textContent = 'Choose a PDF and an account first.'; return; }
-    if (file.size > 15 * 1024 * 1024) { status.textContent = 'Choose a PDF smaller than 15 MB.'; return; }
+    if (!file || !account) { status.textContent = 'Choose a PDF or CSV and an account first.'; return; }
+    if (file.size > 15 * 1024 * 1024) { status.textContent = 'Choose a file smaller than 15 MB.'; return; }
     loading = true; parseButton.disabled = true;
     review.hidden = true; byId('statement-source').hidden = true;
     container.replaceChildren(); pendingReview = false;
@@ -83,8 +84,19 @@ parseButton.addEventListener('click', async () => {
     status.textContent = 'Reading statement in your browser…';
     let task;
     try {
+        if (/\.csv$/i.test(file.name) || /(?:text\/csv|application\/csv)/i.test(file.type)) {
+            const csv = await file.text();
+            const parsed = parseStatementCsv(csv, config.month, byId('statement-mode').value);
+            if (parsed.rows.length > 1000) throw new Error('More than 1,000 candidate items were found. Split the CSV into smaller files.');
+            previewAccount = account;
+            renderRows(parsed.rows);
+            byId('statement-text').textContent = parsed.skipped.map(row => `Skipped CSV line ${row.line}: ${row.reason}\n${row.text}`).join('\n\n') + '\n\nOriginal CSV:\n' + csv;
+            byId('statement-source').hidden = false;
+            status.textContent = `${parsed.format}: ${parsed.rows.length} candidate items found for ${byId('statement-account').selectedOptions[0].textContent}; ${parsed.skipped.length} rows skipped. Review skipped rows below and check the selected items before adding. Nothing has been saved.`;
+            return;
+        }
         const data = new Uint8Array(await file.arrayBuffer());
-        if (String.fromCharCode(...data.slice(0,5)) !== '%PDF-') throw new Error('This file is not a PDF.');
+        if (String.fromCharCode(...data.slice(0,5)) !== '%PDF-') throw new Error('Choose a PDF or a file ending in .csv.');
         const pdfjs = await import('./vendor/pdfjs/pdf.min.mjs');
         pdfjs.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
         task = pdfjs.getDocument({data, isEvalSupported:false, cMapUrl:new URL('./vendor/pdfjs/cmaps/', import.meta.url).href, cMapPacked:true, standardFontDataUrl:new URL('./vendor/pdfjs/standard_fonts/', import.meta.url).href});
@@ -112,7 +124,7 @@ parseButton.addEventListener('click', async () => {
                 : 'No transaction rows could be read. Scanned PDFs need OCR first; other layouts may need manual entry. Check extracted text below if available.';
         } finally { clearTimeout(timeout); }
     } catch (error) {
-        status.textContent = error.name === 'PasswordException' ? 'This PDF is password-protected. Choose an unlocked copy.' : `Could not preview the PDF: ${error.message || 'Please try a smaller, text-based PDF.'}`;
+        status.textContent = error.name === 'PasswordException' ? 'This PDF is password-protected. Choose an unlocked copy.' : `Could not preview the statement: ${error.message || 'Please try a smaller PDF or CSV.'}`;
     } finally {
         if (task) { try { await task.destroy(); } catch (_) {} }
         loading = false; parseButton.disabled = false;
