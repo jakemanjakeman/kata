@@ -11,6 +11,23 @@ $accounts = [['id' => 'bank', 'name' => 'Bank']];
 $categories = ['uncategorized' => 'Uncategorized'];
 $row = ['name' => 'Lunch', 'type' => 'expense', 'amount' => '10.10', 'account_id' => 'bank', 'category' => 'uncategorized'];
 try {
+    $averageFixture = ['personal' => [
+        '2026-01' => ['items' => [['type'=>'expense','category'=>'rent','amount_cents'=>100001], ['type'=>'expense','category'=>'food','amount_cents'=>30000], ['type'=>'income','category'=>'food','amount_cents'=>900000]]],
+        '2026-02' => ['items' => [['type'=>'expense','category'=>'rent','amount_cents'=>100000]]],
+        '2026-03' => ['items' => []],
+        '2025-12' => ['items' => [['type'=>'expense','category'=>'travel','amount_cents'=>999999]]],
+    ], 'business' => ['2026-01' => ['items' => [['type'=>'expense','category'=>'travel','amount_cents'=>999999]]]]];
+    $averages = expensesAuditCategoryAverages($averageFixture, 'personal', 2026);
+    auditCheck($averages['months'] === 2 && count($averages['categories']) === 2, 'Averages exclude missing/empty months, other years and scopes');
+    auditCheck($averages['categories'][0]['category'] === 'rent' && $averages['categories'][0]['average_cents'] === 100001, 'Most costly category is first, rounded to cents');
+    auditCheck($averages['categories'][1]['average_cents'] === 15000, 'Income excluded; category absence counts as zero');
+    $averageFixture['personal']['2026-04'] = ['items'=>[['type'=>'income','category'=>'food','amount_cents'=>100000]]];
+    auditCheck(expensesAuditCategoryAverages($averageFixture,'personal',2026)['categories'][1]['average_cents'] === 10000, 'Income-only audited months count in the denominator');
+    auditCheck(expensesAuditCategoryAverages([], 'personal', 2026) === ['months'=>0,'categories'=>[]], 'Empty averages avoid division by zero');
+    $manyCategories = [];
+    for ($i = 1; $i <= 7; $i++) { $manyCategories[] = ['type'=>'expense','category'=>'category'.$i,'amount_cents'=>$i * 100]; }
+    $top = expensesAuditCategoryAverages(['personal'=>['2026-01'=>['items'=>$manyCategories]]], 'personal', 2026);
+    auditCheck(count($top['categories']) === 5 && $top['categories'][4]['category'] === 'category3', 'Only five most costly categories shown');
     auditCheck(auditMonthValid('2026-02') && !auditMonthValid('2026-13') && !auditMonthValid('26-02'), 'Month validation');
     $items = validateAuditItems([$row, array_merge($row, ['type' => 'income', 'amount' => '100.30'])], $accounts, $categories);
     $report = expensesAuditReport($items);

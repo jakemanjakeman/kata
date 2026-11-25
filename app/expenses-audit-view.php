@@ -21,6 +21,14 @@ main.app-shell.is-audit { width:calc(100% - 32px); max-width:none; }
 .audit-month-nav a:hover,.audit-month-nav a:focus-visible { text-decoration:underline; }
 .night-mode .audit-month-nav a { background:#30363b; border-color:#58616a; color:#bac1c8; }
 .night-mode .audit-month-nav a.has-items { background:#19452c; border-color:#4b9968; color:#b9efca; }
+.audit-hero { padding:24px; margin:0 0 20px; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
+.audit-hero h2 { margin:0 0 8px; font-size:1.3rem; }
+.audit-hero-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:16px; margin-top:20px; }
+.audit-hero-card { min-width:0; padding:20px; border:1px solid var(--line); border-top:4px solid var(--accent); border-radius:8px; background:var(--empty-bg); }
+.audit-hero-card h3 { margin:0 0 12px; font-size:1rem; overflow-wrap:anywhere; }
+.audit-hero-amount { display:block; font-size:clamp(1.5rem,2.5vw,2.4rem); font-weight:800; line-height:1.2; overflow-wrap:anywhere; }
+.audit-hero-card p { margin:8px 0 0; color:var(--muted); font-size:.9rem; }
+@media(max-width:480px) { .audit-hero { padding:16px; } .audit-hero-grid { grid-template-columns:minmax(0,1fr); } }
 .audit-toolbar { display:flex; flex-wrap:wrap; align-items:end; gap:12px; margin:16px 0; }
 .audit-toolbar label,.audit-item label { position:static; width:auto; height:auto; overflow:visible; clip:auto; display:block; font-size:.85rem; }
 .audit-toolbar label { margin-bottom:8px; }
@@ -44,6 +52,25 @@ main.app-shell.is-audit { width:calc(100% - 32px); max-width:none; }
     <?php if ($auditYear > 1000): ?><a href="<?= $auditEscape(financeScopeUrl('finance.php?page=audit&month=' . ($auditYear - 1) . substr($auditMonth, 4))) ?>">&larr; <?= $auditYear - 1 ?></a><?php endif; ?>
     <?php if ($auditYear < 9999): ?><a href="<?= $auditEscape(financeScopeUrl('finance.php?page=audit&month=' . ($auditYear + 1) . substr($auditMonth, 4))) ?>"><?= $auditYear + 1 ?> &rarr;</a><?php endif; ?>
 </form>
+<?php $auditAverages = expensesAuditCategoryAverages($audits, $financeScope, $auditYear); ?>
+<section class="audit-hero" aria-labelledby="audit-hero-title">
+<h2 id="audit-hero-title">Highest spending categories &middot; <?= $auditYear ?> &middot; <?= ucfirst($financeScope) ?></h2>
+<?php if ($auditAverages['categories'] === []): ?>
+<p class="subtitle">Save expenses in an audit to see your top categories and monthly averages here.</p>
+<?php else: ?>
+<p class="subtitle">Average monthly expenses across <?= $auditAverages['months'] ?> saved month<?= $auditAverages['months'] === 1 ? '' : 's' ?> with items. Empty and missing audits are excluded; categories with no spending in an included month count as $0. Income is excluded.</p>
+<div class="audit-hero-grid">
+<?php foreach ($auditAverages['categories'] as $rank => $categoryAverage): ?>
+<article class="audit-hero-card">
+<h3><?= $rank + 1 ?>. <?= $auditEscape($auditCategories[$categoryAverage['category']] ?? ucwords(str_replace('_', ' ', $categoryAverage['category']))) ?></h3>
+<strong class="audit-hero-amount"><?= $auditEscape(formatMoney($categoryAverage['average_cents'] / 100)) ?></strong>
+<p>average / month</p>
+<p><?= $auditEscape(formatMoney($categoryAverage['total_cents'] / 100)) ?> total in saved audits</p>
+</article>
+<?php endforeach; ?>
+</div>
+<?php endif; ?>
+</section>
 <nav class="audit-month-nav" aria-label="<?= $auditYear ?> audit months">
 <?php foreach (['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] as $monthIndex => $monthLabel): ?>
 <?php $monthKey = sprintf('%04d-%02d', $auditYear, $monthIndex + 1); $hasItems = !empty($audits[$financeScope][$monthKey]['items']); $monthStatus = $hasItems ? 'Has audit items' : 'No audit items'; ?>

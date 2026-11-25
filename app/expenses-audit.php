@@ -104,6 +104,27 @@ function saveExpensesAudit(string $path, string $scope, string $month, array $it
     }
 }
 
+function expensesAuditCategoryAverages(array $audits, string $scope, int $year): array
+{
+    $months = 0;
+    $totals = [];
+    foreach ($audits[$scope] ?? [] as $month => $audit) {
+        if (substr((string)$month, 0, 4) !== (string)$year || empty($audit['items'])) { continue; }
+        $months++;
+        foreach ($audit['items'] as $item) {
+            if (($item['type'] ?? '') !== 'expense') { continue; }
+            $category = (string)($item['category'] ?? 'uncategorized');
+            $totals[$category] = ($totals[$category] ?? 0) + (int)$item['amount_cents'];
+        }
+    }
+    arsort($totals, SORT_NUMERIC);
+    $categories = [];
+    foreach (array_slice($totals, 0, 5, true) as $category => $total) {
+        $categories[] = ['category' => $category, 'total_cents' => $total, 'average_cents' => (int)round($total / $months)];
+    }
+    return ['months' => $months, 'categories' => $categories];
+}
+
 function expensesAuditReport(array $items): array
 {
     $report = ['income' => 0, 'expense' => 0, 'net' => 0, 'categories' => [], 'accounts' => []];
